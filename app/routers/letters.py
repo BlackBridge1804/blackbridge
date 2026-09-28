@@ -19,6 +19,8 @@ _BUREAU_RECIPIENTS = {
     "fcra_609": ("Equifax / Experian / TransUnion", "confirm current bureau disclosure address before mailing"),
     "fcra_605b": ("Equifax / Experian / TransUnion", "confirm current bureau fraud/ID theft address before mailing"),
     "fcra_mov": ("the same bureau that reported the item verified", "reuse the original dispute's recipient"),
+    "tila_1666b": ("the reporting creditor", "use the creditor's own billing-inquiries/dispute address"),
+    "fcra_charge_off_1099c": ("Equifax / Experian / TransUnion", "confirm current bureau dispute address before mailing"),
 }
 
 _VALID_OUTCOME_STATUSES = {"deleted", "updated", "verified", "no_response"}
@@ -305,6 +307,150 @@ def generate_identity_theft_block(
         violation_id=placeholder_violation.id,
         letter_type="fcra_605b",
         recipient="Equifax / Experian / TransUnion",
+        body_text=body,
+    )
+    db.add(letter)
+    db.commit()
+    db.refresh(letter)
+    return letter
+
+
+@router.post("/late-payment-dispute/{tradeline_id}", response_model=schemas.DisputeLetterOut, status_code=status.HTTP_201_CREATED)
+def generate_late_payment_dispute(
+    report_id: str,
+    tradeline_id: str,
+    payload: schemas.LatePaymentDisputeIn,
+    db: Session = Depends(get_db),
+    client: models.Client = Depends(require_client),
+):
+    """TILA Section 1666b: a narrow, fact-specific dispute that only fits when
+    the creditor's own statement-mailing timing or payment-crediting was at
+    fault -- not a general 'remove all late payments' tool. A credit report
+    alone can't reveal statement-mailing dates, so this is the client's own
+    attested account, same pattern as the identity-theft block below."""
+    report = _get_owned_paid_report(db, report_id, client)
+    tradeline = (
+        db.query(models.Tradeline)
+        .filter(models.Tradeline.id == tradeline_id, models.Tradeline.report_id == report.id)
+        .first()
+    )
+    if not tradeline:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tradeline not found on this report")
+
+    description = (
+        f"Client states they made the payment dated {payload.payment_date} on time and disputes "
+        f"the late mark tied to it under TILA 15 U.S.C. Section 1666b."
+    )
+    if payload.dispute_notes:
+        description += f" Client notes: {payload.dispute_notes}"
+
+    recipient_name, recipient_note = _BUREAU_RECIPIENTS["tila_1666b"]
+    body = render_letter(
+        letter_type="tila_1666b",
+        client_name=client.full_name or client.email,
+        client_address="(client mailing address on file)",
+        creditor_name=tradeline.creditor_name or "Unknown creditor",
+        finding_description=description,
+        recipient_name=recipient_name,
+        recipient_address=recipient_note,
+        account_number_last4=tradeline.account_number_last4,
+        payment_date=payload.payment_date,
+    )
+
+    # Not a rules-engine finding -- the client's own attestation about payment
+    # timing, same reasoning as the identity-theft block's placeholder Violation.
+    placeholder_violation = models.Violation(
+        tradeline_id=tradeline.id,
+        rule_id="client_disputed_late_payment_timing",
+        legal_basis="TILA Section 1666b (15 U.S.C. Section 1666b)",
+        severity="medium",
+        description=description,
+        letter_type="tila_1666b",
+    )
+    db.add(placeholder_violation)
+    db.flush()
+
+    letter = models.DisputeLetter(
+        violation_id=placeholder_violation.id,
+        letter_type="tila_1666b",
+        recipient=recipient_name,
+        body_text=body,
+    )
+    db.add(letter)
+    db.commit()
+    db.refresh(letter)
+    return letter
+
+
+@router.post("/charge-off-1099c-evidence/{tradeline_id}", response_model=schemas.DisputeLetterOut, status_code=status.HTTP_201_CREATED)
+def generate_charge_off_1099c_dispute(
+    report_id: str,
+    tradeline_id: str,
+    payload: schemas.ChargeOffEvidenceIn,
+    db: Session = Depends(get_db),
+    client: models.Client = Depends(require_client),
+):
+    """Uses a client-obtained Form 1099-C (directly, or via their own IRS Form
+    4506-T request) as SUPPORTING EVIDENCE inside a normal FCRA Section
+    611/623 accuracy dispute. This platform does not assert that a 1099-C
+    automatically extinguishes a debt or forces deletion -- that theory is
+    legally disputed; see fcra_charge_off_1099c_dispute.txt.jinja for exactly
+    how the letter is worded."""
+    report = _get_owned_paid_report(db, report_id, client)
+    tradeline = (
+        db.query(models.Tradeline)
+        .filter(models.Tradeline.id == tradeline_id, models.Tradeline.report_id == report.id)
+        .first()
+    )
+    if not tradeline:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Tradeline not found on this report")
+
+    cancelled_amount_str = None
+    if payload.cancelled_amount_cents is not None:
+        cancelled_amount_str = f"${payload.cancelled_amount_cents / 100:,.2f}"
+
+    description = (
+        f"Client obtained a Form 1099-C for tax year {payload.tax_year}"
+        + (f" showing {cancelled_amount_str} cancelled" if cancelled_amount_str else "")
+        + " on this charged-off account, and disputes the balance/status currently being reported "
+        "as inconsistent with that filing."
+    )
+    if payload.notes:
+        description += f" Client notes: {payload.notes}"
+
+    recipient_name, recipient_note = _BUREAU_RECIPIENTS["fcra_charge_off_1099c"]
+    body = render_letter(
+        letter_type="fcra_charge_off_1099c",
+        client_name=client.full_name or client.email,
+        client_address="(client mailing address on file)",
+        creditor_name=tradeline.creditor_name or "Unknown creditor",
+        finding_description=description,
+        recipient_name=recipient_name,
+        recipient_address=recipient_note,
+        account_number_last4=tradeline.account_number_last4,
+        original_creditor_name=tradeline.original_creditor_name,
+        tax_year=payload.tax_year,
+        cancelled_amount=cancelled_amount_str,
+    )
+
+    placeholder_violation = models.Violation(
+        tradeline_id=tradeline.id,
+        rule_id="client_charge_off_1099c_evidence",
+        legal_basis=(
+            "FCRA Sections 611 and 623 (15 U.S.C. 1681i, 1681s-2) -- 1099-C used as supporting "
+            "evidence of a reporting inconsistency, not a standalone deletion theory"
+        ),
+        severity="medium",
+        description=description,
+        letter_type="fcra_charge_off_1099c",
+    )
+    db.add(placeholder_violation)
+    db.flush()
+
+    letter = models.DisputeLetter(
+        violation_id=placeholder_violation.id,
+        letter_type="fcra_charge_off_1099c",
+        recipient=recipient_name,
         body_text=body,
     )
     db.add(letter)
