@@ -25,6 +25,8 @@ _TEMPLATE_BY_LETTER_TYPE = {
     "secondary_bureau": "secondary_bureau_dispute.txt.jinja",
     "fcra_605b": "fcra_605b_identity_theft_block.txt.jinja",
     "fcra_mov": "fcra_mov_request.txt.jinja",
+    "tila_1666b": "tila_1666b_late_payment_dispute.txt.jinja",
+    "fcra_charge_off_1099c": "fcra_charge_off_1099c_dispute.txt.jinja",
 }
 
 # Default recipient for each letter type when the dispute is bureau-directed
@@ -50,6 +52,9 @@ def render_letter(
     original_creditor_name: str | None = None,
     identity_theft_report_number: str | None = None,
     original_dispute_date: str | None = None,
+    payment_date: str | None = None,
+    tax_year: str | None = None,
+    cancelled_amount: str | None = None,
 ) -> str:
     template_name = _TEMPLATE_BY_LETTER_TYPE.get(letter_type)
     if not template_name:
@@ -68,4 +73,7 @@ def render_letter(
         original_creditor_name=original_creditor_name,
         identity_theft_report_number=identity_theft_report_number,
         original_dispute_date=original_dispute_date,
+        payment_date=payment_date,
+        tax_year=tax_year,
+        cancelled_amount=cancelled_amount,
     )
