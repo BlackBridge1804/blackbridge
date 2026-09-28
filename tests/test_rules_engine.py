@@ -19,7 +19,7 @@ def _load_sample_tradelines():
 
 def test_parser_extracts_all_sample_tradelines():
     tradelines = _load_sample_tradelines()
-    assert len(tradelines) == 6
+    assert len(tradelines) == 8
 
 
 def test_missing_dofd_on_collection_is_flagged():
@@ -85,3 +85,37 @@ def test_every_finding_has_an_auditable_legal_basis():
     for finding in findings:
         assert finding["legal_basis"], f"Finding {finding['rule_id']} has no legal basis cited"
         assert finding["letter_type"], f"Finding {finding['rule_id']} has no letter_type mapped"
+
+
+def test_every_collection_account_is_validation_eligible():
+    tradelines = _load_sample_tradelines()
+    findings = scan_tradelines(tradelines)
+    validation_findings = [f for f in findings if f["rule_id"] == "fdcpa_validation_eligible"]
+    # Acme Collections and Sunset Apartments Property Management are both
+    # collection accounts in the sample data -- both should fire.
+    assert len(validation_findings) == 2
+    assert all(f["letter_type"] == "fdcpa_809" for f in validation_findings)
+
+
+def test_repossession_is_flagged():
+    tradelines = _load_sample_tradelines()
+    findings = scan_tradelines(tradelines)
+    repo_findings = [f for f in findings if f["rule_id"] == "fcra_repossession_accuracy"]
+    assert len(repo_findings) == 1
+    assert "Speedy Auto Finance" in repo_findings[0]["description"]
+    assert repo_findings[0]["letter_type"] == "fcra_611"
+    # A non-repossessed account must not false-positive.
+    assert not any("Big Bank Visa" in f["description"] for f in repo_findings)
+
+
+def test_rental_collection_heuristic_is_flagged_and_hedged():
+    tradelines = _load_sample_tradelines()
+    findings = scan_tradelines(tradelines)
+    rental_findings = [f for f in findings if f["rule_id"] == "fcra_rental_collection_furnisher_accuracy"]
+    assert len(rental_findings) == 1
+    assert "Sunset Apartments Property Management" in rental_findings[0]["description"]
+    assert rental_findings[0]["letter_type"] == "fcra_623_direct"
+    # A plain (non-rental-keyword) collection account must not false-positive.
+    assert not any("Acme Collections" in f["description"] for f in rental_findings)
+    # The finding must not overclaim that this IS an eviction -- it should hedge.
+    assert "verify" in rental_findings[0]["description"].lower()
