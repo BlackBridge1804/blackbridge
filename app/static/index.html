@@ -224,8 +224,9 @@ var DEFAULT_ORG_SLUG = "";
 var state = {
   token: null,
   tokenPayload: null, // { sub, type, org, exp }
-  view: "loading",     // loading | auth | client | admin | establish
+  view: "loading",     // loading | auth | client | admin | establish | get_report
   establishFrom: null, // which view to return to when leaving the "establish credit" walkthrough
+  getReportFrom: null,  // which view to return to when leaving the "get your report" walkthrough
   orgSlug: "",
   reports: [],
   activeReportId: null,
@@ -364,6 +365,8 @@ function logout(){
   chatOpen = false; chatMessages = []; chatHistory = [];
   adminOffers = null; adminOffersError = null; adminOffersLoading = false;
   state.establishFrom = null;
+  state.getReportFrom = null;
+  cfpbPacketText = null;
   render();
 }
 
@@ -396,7 +399,10 @@ function loadReportDetail(reportId){
   });
 }
 
+var cfpbPacketText = null; // fetched on demand when the client clicks "Get complaint packet"
+
 function openReport(reportId){
+  cfpbPacketText = null;
   setBusy(true);
   loadReportDetail(reportId).then(function(){
     setBusy(false);
@@ -709,6 +715,92 @@ function openEstablish(fromView){
   render();
 }
 
+/* ---------- "get your report" walkthrough nav ---------- */
+function openGetReport(fromView){
+  state.getReportFrom = fromView || state.view;
+  state.view = "get_report";
+  clearBanner();
+  render();
+}
+
+/* ---------- new dispute-type actions (late payment / charge-off 1099-C / CFPB) ---------- */
+function doLatePaymentDispute(reportId, tradelineId, paymentDate, notes){
+  if (!tradelineId || !paymentDate){
+    setBanner("error", "Pick an account and enter the payment date you're disputing.");
+    render();
+    return;
+  }
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/letters/late-payment-dispute/" + tradelineId, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ payment_date: paymentDate, dispute_notes: notes || null }),
+  }).then(function(){
+    return refreshActiveReport();
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "Late-payment dispute letter generated below (TILA §1666b).");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doChargeOff1099cDispute(reportId, tradelineId, taxYear, cancelledAmountDollars, notes){
+  if (!tradelineId || !taxYear){
+    setBanner("error", "Pick an account and enter the tax year on your Form 1099-C.");
+    render();
+    return;
+  }
+  clearBanner(); setBusy(true);
+  var cents = null;
+  if (cancelledAmountDollars){
+    var parsed = parseFloat(cancelledAmountDollars);
+    if (!isNaN(parsed)) cents = Math.round(parsed * 100);
+  }
+  api("/reports/" + reportId + "/letters/charge-off-1099c-evidence/" + tradelineId, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tax_year: taxYear, cancelled_amount_cents: cents, notes: notes || null }),
+  }).then(function(){
+    return refreshActiveReport();
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "Charge-off accuracy dispute generated below, using your 1099-C as supporting evidence.");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doLoadCfpbPacket(reportId){
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/cfpb-packet").then(function(res){
+    cfpbPacketText = res.packet_text;
+    setBusy(false);
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doMarkCfpbFiled(reportId, outcome, notes){
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/cfpb-complaint", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ outcome: outcome || null, notes: notes || null }),
+  }).then(function(){
+    return refreshActiveReport();
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "CFPB complaint recorded.");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
 /* ---------- chat widget ---------- */
 var chatOpen = false;
 var chatMessages = [];   // [{role:'user'|'assistant', content}], for display
@@ -799,6 +891,8 @@ function render(){
     html += renderAdminView();
   } else if (state.view === "establish"){
     html += renderEstablishView();
+  } else if (state.view === "get_report"){
+    html += renderGetReportView();
   } else {
     html += '<div class="empty">Loading…</div>';
   }
@@ -830,6 +924,11 @@ function renderAuthView(){
     '<details class="admin-toggle"><summary>Organization / platform staff login</summary>' +
       '<div style="margin-top:10px;">' + renderStaffLoginForm() + '</div>' +
     '</details>' +
+  '</div>' +
+  '<div class="card">' +
+    '<h3 style="margin-bottom:6px;">Already have credit history?</h3>' +
+    '<p>See exactly where to pull your report from before you upload it.</p>' +
+    '<button type="button" class="secondary block" data-open-get-report="1">How to get your report</button>' +
   '</div>' +
   '<div class="card">' +
     '<h3 style="margin-bottom:6px;">Don’t have a credit file yet?</h3>' +
@@ -898,6 +997,7 @@ function renderClientDashboard(){
       '<div class="field"><input type="file" id="uploadFile" required></div>' +
       '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Upload & scan") + '</button>' +
     '</form>' +
+    '<p class="muted" style="margin-top:10px;margin-bottom:0;">Don’t have a PDF yet? <button type="button" class="link" data-open-get-report="1" style="padding:0;">See exactly where to get one</button></p>' +
   '</div>' +
   '<div class="card">' +
     '<h2>Your reports</h2>' +
@@ -938,6 +1038,49 @@ function renderEstablishView(){
     stepsHtml +
   '</div>' +
   renderPartnerOffersSection(["secured_card", "credit_builder_loan", "rent_reporting", "other"]);
+}
+
+/* ---------- render: "get your report" walkthrough ---------- */
+function renderGetReportView(){
+  var sources = [
+    ["SmartCredit", "https://www.smartcredit.com", "A paid 3-bureau monitoring service. After signing in, look for a report/download or “View report” option, then export or print it as a PDF."],
+    ["Experian.com", "https://www.experian.com", "Experian’s own site offers a free Experian report (one bureau only). After signing in, look for “Download” or “Print” on your report page and save it as a PDF."],
+  ];
+  var sourceCards = sources.map(function(s){
+    return '' +
+    '<div class="offer-card">' +
+      '<div class="offer-head"><strong>' + esc(s[0]) + '</strong></div>' +
+      '<p>' + esc(s[2]) + '</p>' +
+      '<a class="btn" href="' + esc(s[1]) + '" target="_blank" rel="noopener">Go to ' + esc(s[0]) + '</a>' +
+    '</div>';
+  }).join("");
+
+  var steps = [
+    ["Go to SmartCredit or Experian.com -- nowhere else", "These are the only two sources this app instructs you to use. Sites advertising a “free credit report” elsewhere are frequently data brokers or resellers that may not give you an accurate report, and may sell your information."],
+    ["Sign in or create an account there", "That account is with SmartCredit or Experian directly, not with BlackBridge -- we never see your login for either site."],
+    ["Open your full report", "Look for your report or 3-bureau summary once you're signed in."],
+    ["Download or print it as a PDF", "Look for a “Download,” “Export,” or “Print” option and save it as a PDF (not a screenshot -- the PDF's text is what lets this app read it automatically)."],
+    ["Come back here and upload that PDF", "Use the upload button on your dashboard. The app reads it, flags what's disputable, and drafts letters citing the correct law for each finding."],
+  ];
+  var stepsHtml = steps.map(function(s, i){
+    return '' +
+    '<div class="guide-step">' +
+      '<div class="num">' + (i + 1) + '</div>' +
+      '<div class="body"><h3>' + esc(s[0]) + '</h3><p>' + esc(s[1]) + '</p></div>' +
+    '</div>';
+  }).join("");
+
+  return '' +
+  '<button class="link backlink" data-get-report-back="1">← Back</button>' +
+  '<div class="card">' +
+    '<h2>Getting your credit report</h2>' +
+    '<p class="disclaimer">Only use SmartCredit or Experian.com to pull your report for this app. We name these two specifically so you don’t end up on a data-broker site that resells your information or gives an inaccurate report.</p>' +
+    '<div class="offer-grid" style="margin-top:14px;">' + sourceCards + '</div>' +
+  '</div>' +
+  '<div class="card">' +
+    '<h2>Step by step</h2>' +
+    stepsHtml +
+  '</div>';
 }
 
 /* ---------- render: partner / affiliate offers ---------- */
@@ -1013,6 +1156,8 @@ function renderReportDetailView(){
     html += renderRecommendationsSection(b);
     html += renderLettersSection(b, s.report_id);
     html += renderIdentityTheftSection(b, s.report_id);
+    html += renderAdditionalDisputesSection(b, s.report_id);
+    html += renderCfpbSection(b, s.report_id);
     html += renderLitigationSection(b);
   }
 
@@ -1151,6 +1296,75 @@ function renderIdentityTheftSection(b, reportId){
       '<div class="field"><label>Account</label><select id="idt_tradeline">' + options + '</select></div>' +
       '<div class="field"><label>FTC identity theft report number</label><input type="text" id="idt_number" placeholder="e.g. 123456789"></div>' +
       '<button type="submit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Generate block letter</button>' +
+    '</form>' +
+  '</div>';
+}
+
+function renderAdditionalDisputesSection(b, reportId){
+  var options = b.tradelines.map(function(t){
+    return '<option value="' + esc(t.id) + '">' + esc(t.creditor_name || "Unnamed account") + '</option>';
+  }).join("");
+
+  return '' +
+  '<div class="card">' +
+    '<h2>More ways to dispute</h2>' +
+    '<p class="muted">These two need a detail only you have -- the report alone can’t reveal it -- so they’re not auto-generated like the findings above.</p>' +
+    '<div class="divider"></div>' +
+    '<h3>Late payment -- statement timing (TILA §1666b)</h3>' +
+    '<p>Only fits if a creditor marked a payment late but either mailed your statement less than 21 days before the due date, or didn’t credit your payment as of the day it was received. Not a way to remove late payments in general.</p>' +
+    '<form id="latePaymentForm" data-report="' + esc(reportId) + '" class="stack">' +
+      '<div class="field"><label>Account</label><select id="lp_tradeline">' + options + '</select></div>' +
+      '<div class="field"><label>Date you paid (or believe was received)</label><input type="text" id="lp_date" placeholder="YYYY-MM-DD"></div>' +
+      '<div class="field"><label>Notes (optional)</label><input type="text" id="lp_notes" placeholder="e.g. statement was mailed only 10 days before the due date"></div>' +
+      '<button type="submit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Generate letter</button>' +
+    '</form>' +
+    '<div class="divider"></div>' +
+    '<h3>Charge-off -- 1099-C as supporting evidence (FCRA §611/§623)</h3>' +
+    '<p>If you received (or requested via IRS Form 4506-T) a Form 1099-C for this debt, this generates an accuracy dispute pointing out that the creditor told the IRS the debt was cancelled while still reporting a balance -- used as evidence inside a normal accuracy dispute, not as a claim that a 1099-C legally erases the debt (courts are divided on that, so this app doesn’t rely on it).</p>' +
+    '<form id="chargeOffForm" data-report="' + esc(reportId) + '" class="stack">' +
+      '<div class="field"><label>Account</label><select id="co_tradeline">' + options + '</select></div>' +
+      '<div class="field"><label>Tax year on the 1099-C</label><input type="text" id="co_year" placeholder="e.g. 2023"></div>' +
+      '<div class="field"><label>Cancelled amount (optional, $)</label><input type="text" id="co_amount" placeholder="e.g. 812.00"></div>' +
+      '<div class="field"><label>Notes (optional)</label><input type="text" id="co_notes" placeholder=""></div>' +
+      '<button type="submit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Generate letter</button>' +
+    '</form>' +
+  '</div>';
+}
+
+function renderCfpbSection(b, reportId){
+  var p = b.progress;
+  var filed = p && p.cfpb_complaint_filed;
+  var statusLine = filed
+    ? '<span class="badge paid">Filed' + (p.cfpb_complaint_outcome ? " -- " + esc(p.cfpb_complaint_outcome) : "") + '</span>'
+    : '<span class="badge unpaid">Not filed yet</span>';
+
+  var packetBlock = "";
+  if (cfpbPacketText){
+    packetBlock = '<details open style="margin-top:12px;"><summary class="muted">Complaint packet -- copy into the CFPB form</summary><pre>' + esc(cfpbPacketText) + '</pre></details>';
+  }
+
+  return '' +
+  '<div class="card">' +
+    '<div class="row-wrap" style="justify-content:space-between;">' +
+      '<h2 style="margin:0;">File a CFPB complaint</h2>' +
+      statusLine +
+    '</div>' +
+    '<p>A CFPB complaint is a real federal process, separate from mailing a dispute letter -- the company is required to respond to the CFPB directly, which often gets faster attention than a mailed letter alone. <strong>This app never creates an account or submits anything for you</strong> -- you create your own free account and submit it yourself.</p>' +
+    '<div class="row-wrap">' +
+      '<button type="button" data-cfpb-packet="' + esc(reportId) + '" class="secondary"' + (state.busy ? " disabled" : "") + '>Get complaint packet</button>' +
+      '<a class="btn" href="https://www.consumerfinance.gov/complaint/" target="_blank" rel="noopener">Go to consumerfinance.gov/complaint</a>' +
+    '</div>' +
+    packetBlock +
+    '<div class="divider"></div>' +
+    '<form id="cfpbFiledForm" data-report="' + esc(reportId) + '" class="row-wrap">' +
+      '<select id="cfpb_outcome">' +
+        '<option value="">I filed my complaint...</option>' +
+        '<option value="in_progress">In progress</option>' +
+        '<option value="resolved">Resolved</option>' +
+        '<option value="no_response">No response yet</option>' +
+      '</select>' +
+      '<input type="text" id="cfpb_notes" placeholder="Notes (optional)" style="flex:1;min-width:160px;">' +
+      '<button type="submit" class="secondary"' + (state.busy ? " disabled" : "") + '>Save</button>' +
     '</form>' +
   '</div>';
 }
@@ -1411,6 +1625,7 @@ function bindEvents(){
     back.addEventListener("click", function(){
       state.activeReportId = null;
       state.activeReport = null;
+      cfpbPacketText = null;
       clearBanner();
       loadReportsList().then(render);
     });
@@ -1555,6 +1770,62 @@ function bindEvents(){
       state.establishFrom = null;
       clearBanner();
       render();
+    });
+  }
+
+  app.querySelectorAll("[data-open-get-report]").forEach(function(btn){
+    btn.addEventListener("click", function(){ openGetReport(state.view); });
+  });
+  var getReportBack = app.querySelector("[data-get-report-back]");
+  if (getReportBack){
+    getReportBack.addEventListener("click", function(){
+      state.view = state.getReportFrom || (state.token ? "client" : "auth");
+      state.getReportFrom = null;
+      clearBanner();
+      render();
+    });
+  }
+
+  var latePaymentForm = document.getElementById("latePaymentForm");
+  if (latePaymentForm){
+    latePaymentForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      var reportId = latePaymentForm.getAttribute("data-report");
+      var tradelineId = document.getElementById("lp_tradeline").value;
+      var paymentDate = document.getElementById("lp_date").value.trim();
+      var notes = document.getElementById("lp_notes").value.trim();
+      doLatePaymentDispute(reportId, tradelineId, paymentDate, notes);
+    });
+  }
+
+  var chargeOffForm = document.getElementById("chargeOffForm");
+  if (chargeOffForm){
+    chargeOffForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      var reportId = chargeOffForm.getAttribute("data-report");
+      var tradelineId = document.getElementById("co_tradeline").value;
+      var taxYear = document.getElementById("co_year").value.trim();
+      var amount = document.getElementById("co_amount").value.trim();
+      var notes = document.getElementById("co_notes").value.trim();
+      doChargeOff1099cDispute(reportId, tradelineId, taxYear, amount, notes);
+    });
+  }
+
+  var cfpbPacketBtn = app.querySelector("[data-cfpb-packet]");
+  if (cfpbPacketBtn){
+    cfpbPacketBtn.addEventListener("click", function(){
+      doLoadCfpbPacket(cfpbPacketBtn.getAttribute("data-cfpb-packet"));
+    });
+  }
+
+  var cfpbFiledForm = document.getElementById("cfpbFiledForm");
+  if (cfpbFiledForm){
+    cfpbFiledForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      var reportId = cfpbFiledForm.getAttribute("data-report");
+      var outcome = document.getElementById("cfpb_outcome").value;
+      var notes = document.getElementById("cfpb_notes").value.trim();
+      doMarkCfpbFiled(reportId, outcome, notes);
     });
   }
 }
