@@ -4,3 +4,5 @@ Creditor: Old Retail Card | Type: revolving | Status: charged off | Balance: 812
 Creditor: Secondhand Auto Loan | Type: installment | Status: paid as agreed | Balance: 0.00 | Limit: | Opened: 2019-09-01 | Closed: 2020-01-01 | DOFD: | Collection: no | OriginalCreditor:
 Creditor: Broken Utility Co | Type: revolving | Status: paid as agreed | Balance: 300.00 | Limit: 200.00 | Opened: 2020-02-01 | Closed: | DOFD: | Collection: no | OriginalCreditor:
 Creditor: Mixed Up Finance | Type: installment | Status: paid in full | Balance: 175.00 | Limit: | Opened: 2017-06-01 | Closed: 2019-06-01 | DOFD: | Collection: no | OriginalCreditor:
+Creditor: Speedy Auto Finance | Type: installment | Status: repossessed | Balance: 4500.00 | Limit: | Opened: 2021-01-01 | Closed: | DOFD: | Collection: no | OriginalCreditor:
+Creditor: Sunset Apartments Property Management | Type: collection | Status: charged off | Balance: 1200.00 | Limit: | Opened: 2022-03-01 | Closed: | DOFD: 2022-01-01 | Collection: yes | OriginalCreditor:
