@@ -1,0 +1,40 @@
+{{ client_name }}
+{{ client_address }}
+
+{{ today }}
+
+{{ recipient_name }}
+{{ recipient_address }}
+
+Re: Dispute of Charge-Off Balance -- Fair Credit Reporting Act Sections 611 and 623
+(15 U.S.C. Sections 1681i and 1681s-2)
+
+To Whom It May Concern:
+
+I am disputing the accuracy of the balance and status currently being reported on the
+charged-off account referenced below.
+
+Creditor: {{ creditor_name }}
+{% if account_number_last4 %}Account ending in: {{ account_number_last4 }}{% endif %}
+{% if original_creditor_name %}Original Creditor: {{ original_creditor_name }}{% endif %}
+
+Basis for this dispute: {{ finding_description }}
+
+{% if tax_year %}
+Supporting evidence: I obtained a Form 1099-C, Cancellation of Debt, for tax year {{ tax_year }}
+{% if cancelled_amount %}showing a cancelled amount of {{ cancelled_amount }}{% endif %} filed by
+this creditor with the IRS. I am not asserting that a Form 1099-C automatically extinguishes this
+debt as a matter of law -- courts are divided on that question, and I am not relying on it as one.
+I am pointing out a factual inconsistency that your own duty to report accurate information
+requires you to reconcile: this creditor represented to the IRS that this debt, or a specified
+portion of it, was cancelled, while continuing to report an active or unreconciled balance to
+consumer reporting agencies.
+{% endif %}
+
+Please conduct a reasonable reinvestigation of this account's currently reported balance and
+status, reconcile it against the Form 1099-C information described above where applicable, and
+correct or delete any information that cannot be verified as accurate. Please provide me with
+the results of your reinvestigation.
+
+Sincerely,
+{{ client_name }}
