@@ -21,8 +21,10 @@ signup or from the client dashboard -- no personal data involved, so no
 backend endpoint), a platform-admin-managed partner/affiliate offers
 marketplace (secured cards, credit-builder loans like Kovo, rent-reporting
 services, etc. -- every listing carries its own FTC-required disclosure text
-and starts as an inactive draft so nothing goes live by accident), and a
-single-file responsive web frontend (no build step, works on phones and
+and starts as an inactive draft so nothing goes live by accident), five
+additional flaw-specific dispute categories with a guided "get your report"
+walkthrough and a manual CFPB-complaint workflow (see "The five additional
+dispute categories" below), and a single-file responsive web frontend (no build step, works on phones and
 desktop browsers from one URL) that exercises the whole pipeline. Every
 piece here has been run and tested end to end, including a real
 headless-browser run through the full UI (see "What's been verified" below).
@@ -44,6 +46,79 @@ understanding -- parsing messy report text into structured data, or (if you
 add it) polishing letter prose -- never for deciding whether something is a
 violation. That boundary is what makes the letters auditable and defensible,
 and it's why it's worth keeping as the codebase grows.
+
+## The five additional dispute categories
+
+Five flaw-specific dispute categories were added on top of the general
+FCRA §611/§623/§605B/MOV set above. Three are detected automatically by the
+rules engine, straight from tradeline fields already on the report, exactly
+like the original rules -- no extra input needed from the client:
+
+- **Collections** -- every collection-agency tradeline is now flagged as
+  eligible for an FDCPA §809 debt-validation letter (15 U.S.C. §1692g). This
+  template already existed but nothing generated it automatically; it does
+  now. **Caveat baked into both the rule and the letter:** §809(b)'s
+  automatic "the collector must pause collection while validating"
+  requirement only applies within 30 days of the collector's first written
+  notice -- a credit report has no way to know that date, so neither the
+  finding nor the letter asserts that suspension right unconditionally.
+- **Repossessions** -- any tradeline whose status contains "repossess" is
+  flagged for an FCRA §611 accuracy reinvestigation (15 U.S.C. §1681i)
+  covering the fields repos commonly get wrong: the sale date and the
+  post-sale deficiency-balance calculation.
+- **Evictions** -- there is no reliable rule for this, and the README says so
+  directly in the finding text: evictions themselves generally do **not**
+  appear on Equifax/Experian/TransUnion; they live on separate
+  tenant-screening consumer reports (LexisNexis RentBureau, SafeRent, etc.).
+  What this platform can detect is a collection tradeline whose creditor name
+  matches rental/property-management keywords -- a heuristic that can both
+  miss real rental collections and occasionally false-positive, so the
+  generated letter (FCRA §623, 15 U.S.C. §1681s-2) is worded as an ordinary
+  furnisher-accuracy dispute, never an assertion that the account is
+  definitely eviction-related.
+
+Two more need a fact the report itself can't contain, so -- same pattern as
+the existing identity-theft block -- they're client-attested through a short
+form rather than auto-detected:
+
+- **Late payments** (`POST /reports/{id}/letters/late-payment-dispute/{tradeline_id}`)
+  -- TILA §1666b (15 U.S.C. §1666b) is a narrow, fact-specific theory: a
+  creditor may only mark a payment late if it mailed the statement at least
+  21 days before the due date and credited the payment as of its receipt
+  date. This is not a blanket "remove all late payments" tool, and the letter
+  says so.
+- **Charge-offs** (`POST /reports/{id}/letters/charge-off-1099c-evidence/{tradeline_id}`)
+  -- the popular claim that a creditor issuing a Form 1099-C (obtainable via
+  the client's own IRS Form 4506-T request) automatically forces deletion or
+  proves a debt can't be collected/reported anymore is **not settled law**;
+  courts are split on it, and it's the same category of claim as the
+  UCC/"strawman" theories the in-app assistant already refuses to endorse
+  (see `app/assistant.py`). This platform does not build it in as a
+  standalone legal theory. Instead, a 1099-C is used as *supporting evidence*
+  inside a normal FCRA §611/§623 accuracy dispute: "you told the IRS this
+  debt was cancelled, but you're still reporting an active balance" is a
+  legitimate factual inconsistency, and the letter (see
+  `app/letters/templates/fcra_charge_off_1099c_dispute.txt.jinja`) says
+  explicitly that it is not relying on the 1099-C theory as a matter of law.
+
+**Getting the report in the first place:** the frontend's "How to get your
+report" walkthrough (reachable from the login screen and the client
+dashboard) names exactly two sources -- SmartCredit and Experian.com -- and
+says explicitly not to use anything else, since many "free credit report"
+sites elsewhere are data brokers that resell the visitor's information or
+return an inaccurate report. It instructs downloading a PDF (not a
+screenshot), which this platform can then read automatically.
+
+**CFPB complaints:** after letters are generated, a "File a CFPB complaint"
+card can assemble a plain-text packet (`GET /reports/{id}/cfpb-packet`) --
+every finding, its legal basis, and any letter already sent for it -- for
+the client to paste into their own complaint at
+`consumerfinance.gov/complaint`. **This platform never creates that account
+or submits anything automatically** -- filing is entirely manual, on
+purpose, same as every other action in this codebase that touches a
+third-party account. `POST /reports/{id}/cfpb-complaint` just records that
+the client filed (and, later, the outcome once the company responds through
+the portal) so it shows up alongside the rest of the progress tracker.
 
 ## Project layout
 
@@ -221,14 +296,38 @@ never treats an LLM's confident-sounding guess as ground truth.
 
 ## What's been verified
 
-- `pytest` -- all 19 unit tests pass (8 rules-engine, 5 recommendations, 6
+- `pytest` -- all 22 unit tests pass (11 rules-engine, 5 recommendations, 6
   litigation-candidate escalation logic), including a test that deliberately
   checks the rules engine does *not* false-positive on a normal open
   revolving account with a balance (an earlier draft of that rule did; the
-  test now guards against it regressing), and a test that scans every
+  test now guards against it regressing), a test that scans every
   recommendation's text for anything that looks like a fabricated
   score-point prediction (e.g. "50-100 points") and fails if it finds one --
-  see app/scoring/factors.py for why that guardrail exists.
+  see app/scoring/factors.py for why that guardrail exists -- and, for the
+  five additional dispute categories, tests confirming every collection
+  account (and only collection accounts) is flagged validation-eligible, the
+  repossession rule fires only on accounts actually marked repossessed, and
+  the rental-collection heuristic both fires on a matching creditor name and
+  stays hedged rather than asserting the account is definitely
+  eviction-related.
+- A live end-to-end run of the two client-attested endpoints and the CFPB
+  packet (`late-payment-dispute`, `charge-off-1099c-evidence`,
+  `cfpb-packet`, `cfpb-complaint`) against a real FastAPI `TestClient`,
+  confirming both new letters render with the correct hedged legal language
+  (the TILA letter names the 21-day/payment-crediting requirement rather
+  than claiming all late marks are removable; the 1099-C letter states
+  outright that it isn't relying on the "1099-C forces deletion" theory as
+  settled law) and that the FDCPA §809 letter's new 30-day hedge renders
+  correctly now that it's generated automatically for every collection
+  account rather than only on manual request.
+- **The "get your report" walkthrough, the two new dispute forms, and the
+  CFPB card, also through a real headless browser**: reaching the
+  walkthrough from both the login screen and the client dashboard and
+  confirming it names only SmartCredit and Experian.com; uploading and
+  unlocking a report; submitting the late-payment and charge-off-1099C forms
+  and confirming both letters generate; fetching the CFPB packet and
+  recording a complaint as filed -- zero JavaScript console errors along the
+  way.
 - A full live run against the actual HTTP API: organization creation, client
   signup, report upload, scan (free-tier summary), the 402 paywall block
   before payment, dev-mode checkout, paid letter generation (6 letters from
