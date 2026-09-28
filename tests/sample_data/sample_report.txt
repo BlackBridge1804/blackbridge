@@ -1,0 +1,6 @@
+Creditor: Big Bank Visa | Type: revolving | Status: paid as agreed | Balance: 450.00 | Limit: 1000.00 | Opened: 2018-03-01 | Closed: | DOFD: | Collection: no | OriginalCreditor:
+Creditor: Acme Collections | Type: collection | Status: charged off | Balance: 812.00 | Limit: | Opened: 2021-05-10 | Closed: | DOFD: | Collection: yes | OriginalCreditor: Old Retail Card
+Creditor: Old Retail Card | Type: revolving | Status: charged off | Balance: 812.00 | Limit: 500.00 | Opened: 2015-01-15 | Closed: 2021-04-01 | DOFD: 2016-08-01 | Collection: no | OriginalCreditor:
+Creditor: Secondhand Auto Loan | Type: installment | Status: paid as agreed | Balance: 0.00 | Limit: | Opened: 2019-09-01 | Closed: 2020-01-01 | DOFD: | Collection: no | OriginalCreditor:
+Creditor: Broken Utility Co | Type: revolving | Status: paid as agreed | Balance: 300.00 | Limit: 200.00 | Opened: 2020-02-01 | Closed: | DOFD: | Collection: no | OriginalCreditor:
+Creditor: Mixed Up Finance | Type: installment | Status: paid in full | Balance: 175.00 | Limit: | Opened: 2017-06-01 | Closed: 2019-06-01 | DOFD: | Collection: no | OriginalCreditor:
