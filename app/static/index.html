@@ -1,0 +1,1614 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>BlackBridge</title>
+<meta name="description" content="Upload your credit report, see what's disputable, and generate FCRA-grounded dispute letters.">
+<link rel="manifest" href="/static/manifest.json">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%232f6fed'/%3E%3C/svg%3E">
+<meta name="theme-color" content="#2f6fed">
+<style>
+  :root{
+    --bg:#f5f7fb; --surface:#ffffff; --surface-2:#f0f2f7; --border:#e2e6ef;
+    --text:#1a1f2b; --text-dim:#5b6272; --brand:#2f6fed; --brand-dark:#1f52c7;
+    --ok:#1a8a5f; --ok-bg:#e6f6ef; --warn:#b5790a; --warn-bg:#fbf1de;
+    --danger:#c23b3b; --danger-bg:#fbeaea; --radius:12px;
+    --shadow:0 1px 2px rgba(20,25,40,.06), 0 4px 14px rgba(20,25,40,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1320; --surface:#171c2b; --surface-2:#1e2436; --border:#2a3145;
+      --text:#eef1f8; --text-dim:#9aa3b8; --brand:#5c8dff; --brand-dark:#7ea3ff;
+      --ok:#3ecf8e; --ok-bg:#123526; --warn:#e0a83a; --warn-bg:#3a2c10;
+      --danger:#f27272; --danger-bg:#3a1c1c;
+      --shadow:0 1px 2px rgba(0,0,0,.3), 0 4px 18px rgba(0,0,0,.35);
+    }
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  a{color:var(--brand);}
+  h1,h2,h3{line-height:1.25;margin:0 0 .4em;}
+  p{margin:0 0 .75em;color:var(--text-dim);}
+  .container{max-width:880px;margin:0 auto;padding:0 16px;}
+  header.topbar{
+    position:sticky;top:0;z-index:20;background:var(--surface);
+    border-bottom:1px solid var(--border);
+  }
+  header.topbar .row{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 16px;max-width:880px;margin:0 auto;gap:10px;
+  }
+  .brand{display:flex;align-items:center;gap:8px;font-weight:700;font-size:17px;}
+  .brand .dot{width:10px;height:10px;border-radius:50%;background:var(--brand);flex:none;}
+  .top-actions{display:flex;align-items:center;gap:8px;}
+  .pill{
+    font-size:12px;padding:4px 10px;border-radius:999px;background:var(--surface-2);
+    color:var(--text-dim);border:1px solid var(--border);white-space:nowrap;
+  }
+  main{padding:20px 0 60px;}
+  .card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+    padding:20px;margin-bottom:16px;box-shadow:var(--shadow);
+  }
+  .card h2{font-size:17px;}
+  .card h3{font-size:15px;}
+  .muted{color:var(--text-dim);font-size:13px;}
+  .stack{display:flex;flex-direction:column;gap:12px;}
+  .row-wrap{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  .grid-2{display:grid;grid-template-columns:1fr;gap:12px;}
+  @media(min-width:640px){.grid-2{grid-template-columns:1fr 1fr;}}
+  label{display:block;font-size:13px;font-weight:600;margin-bottom:6px;color:var(--text);}
+  input[type=text],input[type=email],input[type=password],input[type=file],textarea,select{
+    width:100%;padding:11px 12px;border-radius:9px;border:1px solid var(--border);
+    background:var(--surface-2);color:var(--text);font-size:15px;font-family:inherit;
+  }
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--brand);outline-offset:1px;}
+  textarea{min-height:90px;resize:vertical;}
+  .field{margin-bottom:14px;}
+  button, .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;
+    background:var(--brand);color:#fff;border:none;border-radius:9px;
+    padding:11px 16px;font-size:14.5px;font-weight:600;cursor:pointer;
+    min-height:44px;line-height:1.1;transition:background .15s ease,opacity .15s ease;
+  }
+  button:hover{background:var(--brand-dark);}
+  button:disabled{opacity:.55;cursor:not-allowed;}
+  button.secondary{background:var(--surface-2);color:var(--text);border:1px solid var(--border);}
+  button.secondary:hover{background:var(--border);}
+  button.danger{background:var(--danger);}
+  button.danger:hover{background:#a52d2d;}
+  button.link{background:transparent;color:var(--brand);padding:4px 2px;min-height:auto;}
+  button.link:hover{background:transparent;text-decoration:underline;}
+  button.block{width:100%;}
+  .tabs{display:flex;gap:6px;background:var(--surface-2);padding:4px;border-radius:10px;margin-bottom:16px;}
+  .tabs button{flex:1;background:transparent;color:var(--text-dim);box-shadow:none;}
+  .tabs button.active{background:var(--surface);color:var(--text);box-shadow:var(--shadow);}
+  .banner{border-radius:9px;padding:11px 14px;font-size:14px;margin-bottom:14px;}
+  .banner.error{background:var(--danger-bg);color:var(--danger);}
+  .banner.ok{background:var(--ok-bg);color:var(--ok);}
+  .banner.warn{background:var(--warn-bg);color:var(--warn);}
+  .badge{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.03em;}
+  .badge.high{background:var(--danger-bg);color:var(--danger);}
+  .badge.medium{background:var(--warn-bg);color:var(--warn);}
+  .badge.low{background:var(--ok-bg);color:var(--ok);}
+  .badge.paid{background:var(--ok-bg);color:var(--ok);}
+  .badge.unpaid{background:var(--surface-2);color:var(--text-dim);border:1px solid var(--border);}
+  .report-item{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:14px;border:1px solid var(--border);border-radius:10px;cursor:pointer;
+    background:var(--surface);margin-bottom:10px;
+  }
+  .report-item:hover{border-color:var(--brand);}
+  .report-item .meta{font-size:13px;color:var(--text-dim);}
+  .violation{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;}
+  .violation .top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-wrap:wrap;}
+  .letter{border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:10px;}
+  .letter pre{
+    white-space:pre-wrap;word-wrap:break-word;background:var(--surface-2);
+    padding:12px;border-radius:8px;font-size:12.5px;max-height:260px;overflow:auto;
+    font-family:ui-monospace,Menlo,Consolas,monospace;
+  }
+  .divider{height:1px;background:var(--border);margin:16px 0;}
+  .spinner{
+    width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.4);
+    border-top-color:#fff;animation:spin .7s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .empty{text-align:center;padding:30px 10px;color:var(--text-dim);}
+  .backlink{display:inline-flex;align-items:center;gap:4px;margin-bottom:14px;}
+  footer{padding:30px 16px 50px;text-align:center;}
+  details.admin-toggle{margin-top:6px;}
+  details.admin-toggle summary{cursor:pointer;font-size:13px;color:var(--text-dim);}
+  .disclaimer{
+    font-size:12px;color:var(--text-dim);background:var(--surface-2);
+    border-radius:8px;padding:10px 12px;margin-top:10px;
+  }
+  table{width:100%;border-collapse:collapse;font-size:13.5px;}
+  th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--border);}
+  th{color:var(--text-dim);font-weight:600;font-size:12px;text-transform:uppercase;}
+
+  .stepper{display:flex;flex-direction:column;gap:0;}
+  .step{display:flex;align-items:flex-start;gap:12px;position:relative;padding-bottom:18px;}
+  .step:last-child{padding-bottom:0;}
+  .step .dot2{
+    width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+    font-size:12px;font-weight:700;background:var(--surface-2);color:var(--text-dim);border:2px solid var(--border);
+    margin-top:1px;
+  }
+  .step.done .dot2{background:var(--ok);border-color:var(--ok);color:#fff;}
+  .step.current .dot2{background:var(--brand);border-color:var(--brand);color:#fff;}
+  .step .line{position:absolute;left:10px;top:24px;bottom:-2px;width:2px;background:var(--border);}
+  .step.done .line{background:var(--ok);}
+  .step .label{font-size:14px;font-weight:600;padding-top:1px;}
+  .step.current .label{color:var(--brand);}
+  .step:not(.done):not(.current) .label{color:var(--text-dim);font-weight:500;}
+
+  .client-row{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:12px;border:1px solid var(--border);border-radius:10px;cursor:pointer;margin-bottom:8px;
+  }
+  .client-row:hover{border-color:var(--brand);}
+
+  .chat-toggle{
+    position:fixed;right:18px;bottom:18px;z-index:30;border-radius:999px;
+    width:56px;height:56px;padding:0;box-shadow:0 4px 18px rgba(20,25,40,.25);
+    font-size:22px;
+  }
+  .chat-panel{
+    position:fixed;right:18px;bottom:86px;z-index:30;width:min(360px, calc(100vw - 36px));
+    height:min(500px, calc(100vh - 140px));background:var(--surface);border:1px solid var(--border);
+    border-radius:14px;box-shadow:0 8px 30px rgba(20,25,40,.3);display:flex;flex-direction:column;overflow:hidden;
+  }
+  .chat-panel .chat-head{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+  .chat-panel .chat-head strong{font-size:14px;}
+  .chat-panel .chat-body{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px;}
+  .chat-msg{max-width:85%;padding:9px 12px;border-radius:12px;font-size:13.5px;line-height:1.4;}
+  .chat-msg.user{align-self:flex-end;background:var(--brand);color:#fff;border-bottom-right-radius:3px;}
+  .chat-msg.assistant{align-self:flex-start;background:var(--surface-2);color:var(--text);border-bottom-left-radius:3px;white-space:pre-wrap;}
+  .chat-msg-loading{align-self:flex-start;padding:9px 12px;}
+  .chat-panel .chat-input-row{border-top:1px solid var(--border);padding:10px;display:flex;gap:8px;}
+  .chat-panel .chat-input-row input{flex:1;}
+  .chat-panel .chat-input-row button{min-height:40px;padding:0 14px;}
+  .icon-btn{background:transparent;color:var(--text-dim);min-height:auto;padding:2px 6px;box-shadow:none;}
+  .icon-btn:hover{background:var(--surface-2);}
+
+  .guide-step{display:flex;gap:12px;padding:14px 0;border-bottom:1px solid var(--border);}
+  .guide-step:last-child{border-bottom:none;}
+  .guide-step .num{
+    width:26px;height:26px;border-radius:50%;background:var(--brand);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;
+    flex:none;margin-top:1px;
+  }
+  .guide-step .body h3{margin-bottom:4px;}
+  .guide-step .body p{margin-bottom:0;}
+
+  .offer-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+  @media(min-width:640px){.offer-grid{grid-template-columns:1fr 1fr;}}
+  .offer-card{
+    border:1px solid var(--border);border-radius:10px;padding:14px;
+    display:flex;flex-direction:column;gap:8px;
+  }
+  .offer-card .offer-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .offer-card p{margin:0;}
+  .offer-card a.btn{text-decoration:none;text-align:center;}
+  .offer-admin-row{border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:8px;}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="row">
+    <div class="brand"><span class="dot"></span><span id="brandName">BlackBridge</span></div>
+    <div class="top-actions" id="topActions"></div>
+  </div>
+</header>
+<main class="container" id="app"></main>
+<footer>
+  <p class="muted">Not legal advice. Results depend on your specific credit history and are never guaranteed.</p>
+</footer>
+<script>
+(function(){
+"use strict";
+
+/* ---------- config ---------- */
+// Deployers running their own white-label instance can either hard-code a
+// default org slug here, or just always send clients to ?org=<slug>.
+var DEFAULT_ORG_SLUG = "";
+
+/* ---------- tiny state store ---------- */
+var state = {
+  token: null,
+  tokenPayload: null, // { sub, type, org, exp }
+  view: "loading",     // loading | auth | client | admin | establish
+  establishFrom: null, // which view to return to when leaving the "establish credit" walkthrough
+  orgSlug: "",
+  reports: [],
+  activeReportId: null,
+  activeReport: null,   // full detail bundle for the open report
+  banner: null,         // { kind, text }
+  busy: false,
+};
+
+function qs(name){
+  var m = new URLSearchParams(location.search);
+  return m.get(name);
+}
+
+function decodeJwt(token){
+  try{
+    var payload = token.split(".")[1];
+    payload = payload.replace(/-/g, "+").replace(/_/g, "/");
+    while (payload.length % 4) payload += "=";
+    return JSON.parse(atob(payload));
+  }catch(e){ return null; }
+}
+
+function saveToken(token){
+  state.token = token;
+  state.tokenPayload = token ? decodeJwt(token) : null;
+  try{
+    if (token) localStorage.setItem("crp_token", token);
+    else localStorage.removeItem("crp_token");
+  }catch(e){ /* private-browsing / storage blocked -- session still works in-memory */ }
+}
+
+function loadToken(){
+  try{
+    var t = localStorage.getItem("crp_token");
+    if (t){
+      var payload = decodeJwt(t);
+      if (payload && payload.exp && payload.exp * 1000 > Date.now()){
+        state.token = t;
+        state.tokenPayload = payload;
+      }
+    }
+  }catch(e){ /* ignore */ }
+}
+
+/* ---------- API layer ---------- */
+function api(path, opts){
+  opts = opts || {};
+  var headers = opts.headers || {};
+  if (state.token) headers["Authorization"] = "Bearer " + state.token;
+  var fetchOpts = Object.assign({}, opts, { headers: headers });
+  return fetch(path, fetchOpts).then(function(res){
+    // A 204 (e.g. DELETE endpoints) has no body -- FastAPI still sends a
+    // "content-type: application/json" header on it, so trusting that header
+    // alone and calling res.json() throws on the empty body. Handle 204 first.
+    if (res.status === 204){
+      if (!res.ok){
+        var err204 = new Error(res.statusText);
+        err204.status = res.status;
+        throw err204;
+      }
+      return null;
+    }
+    var isJson = (res.headers.get("content-type") || "").indexOf("application/json") !== -1;
+    return (isJson ? res.json() : res.text()).then(function(body){
+      if (!res.ok){
+        var msg = (body && body.detail) ? (typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)) : (typeof body === "string" ? body : res.statusText);
+        var err = new Error(msg);
+        err.status = res.status;
+        throw err;
+      }
+      return body;
+    });
+  });
+}
+
+function apiForm(path, formData){
+  var headers = {};
+  if (state.token) headers["Authorization"] = "Bearer " + state.token;
+  return fetch(path, { method: "POST", headers: headers, body: formData }).then(function(res){
+    return res.json().then(function(body){
+      if (!res.ok){
+        var msg = (body && body.detail) ? body.detail : res.statusText;
+        var err = new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
+        err.status = res.status;
+        throw err;
+      }
+      return body;
+    });
+  });
+}
+
+function apiLogin(username, password){
+  var body = new URLSearchParams();
+  body.set("username", username);
+  body.set("password", password);
+  return fetch("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  }).then(function(res){
+    return res.json().then(function(b){
+      if (!res.ok) throw new Error(b.detail || "Login failed");
+      return b;
+    });
+  });
+}
+
+/* ---------- helpers ---------- */
+function esc(s){
+  if (s === null || s === undefined) return "";
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+function money(cents){
+  if (cents === null || cents === undefined) return "—";
+  return "$" + (cents/100).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function fmtDate(iso){
+  if (!iso) return "—";
+  try{ return new Date(iso).toLocaleString(); }catch(e){ return iso; }
+}
+function setBanner(kind, text){ state.banner = { kind: kind, text: text }; render(); }
+function clearBanner(){ state.banner = null; }
+function setBusy(b){ state.busy = b; render(); }
+
+function logout(){
+  saveToken(null);
+  state.view = "auth";
+  state.reports = [];
+  state.activeReportId = null;
+  state.activeReport = null;
+  adminAnalytics = null; adminAnalyticsError = null;
+  staffClients = null; staffClientsError = null; staffClientsLoading = false;
+  staffSelectedClientId = null; staffSelectedClientReports = null; staffSelectedClientError = null;
+  chatOpen = false; chatMessages = []; chatHistory = [];
+  adminOffers = null; adminOffersError = null; adminOffersLoading = false;
+  state.establishFrom = null;
+  render();
+}
+
+/* ---------- data loaders ---------- */
+function loadReportsList(){
+  return api("/reports").then(function(list){
+    state.reports = list;
+  });
+}
+
+function loadReportDetail(reportId){
+  var bundle = { summary: null, progress: null, violations: [], tradelines: [], letters: [], recSummary: null, recommendations: [], litigation: [] };
+  return api("/reports/" + reportId + "/summary").then(function(s){
+    bundle.summary = s;
+    var calls = [
+      api("/reports/" + reportId + "/recommendations/summary").then(function(r){ bundle.recSummary = r; }).catch(function(){}),
+      api("/reports/" + reportId + "/progress").then(function(p){ bundle.progress = p; }).catch(function(){}),
+    ];
+    if (s.is_paid){
+      calls.push(api("/reports/" + reportId + "/violations").then(function(v){ bundle.violations = v; }).catch(function(){}));
+      calls.push(api("/reports/" + reportId + "/tradelines").then(function(t){ bundle.tradelines = t; }).catch(function(){}));
+      calls.push(api("/reports/" + reportId + "/letters").then(function(l){ bundle.letters = l; }).catch(function(){}));
+      calls.push(api("/reports/" + reportId + "/recommendations").then(function(r){ bundle.recommendations = r; }).catch(function(){}));
+      calls.push(api("/reports/" + reportId + "/letters/litigation-candidates").then(function(l){ bundle.litigation = l; }).catch(function(){}));
+    }
+    return Promise.all(calls);
+  }).then(function(){
+    state.activeReport = bundle;
+    state.activeReportId = reportId;
+  });
+}
+
+function openReport(reportId){
+  setBusy(true);
+  loadReportDetail(reportId).then(function(){
+    setBusy(false);
+    render();
+  }).catch(function(e){
+    setBusy(false);
+    setBanner("error", e.message);
+  });
+}
+
+function refreshActiveReport(){
+  if (!state.activeReportId) return Promise.resolve();
+  return loadReportDetail(state.activeReportId);
+}
+
+/* ---------- actions ---------- */
+function doClientSignup(email, password, fullName, orgSlug){
+  clearBanner(); setBusy(true);
+  return api("/auth/signup/client", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email, password: password, full_name: fullName || null, org_slug: orgSlug }),
+  }).then(function(tok){
+    saveToken(tok.access_token);
+    state.view = "client";
+    return loadReportsList();
+  }).then(function(){
+    setBusy(false);
+    render();
+  }).catch(function(e){
+    setBusy(false);
+    setBanner("error", e.message);
+  });
+}
+
+function doLogin(email, password){
+  clearBanner(); setBusy(true);
+  return apiLogin(email, password).then(function(tok){
+    saveToken(tok.access_token);
+    if (state.tokenPayload && state.tokenPayload.type === "user"){
+      state.view = "admin";
+      setBusy(false);
+      render();
+      return;
+    }
+    state.view = "client";
+    return loadReportsList().then(function(){
+      setBusy(false);
+      render();
+    });
+  }).catch(function(e){
+    setBusy(false);
+    setBanner("error", e.message);
+  });
+}
+
+function doUpload(file){
+  if (!file) return;
+  clearBanner(); setBusy(true);
+  var fd = new FormData();
+  fd.append("file", file);
+  var newReportId = null;
+  apiForm("/reports/upload", fd).then(function(res){
+    newReportId = res.report_id;
+    return api("/reports/" + newReportId + "/scan", { method: "POST" });
+  }).then(function(){
+    return loadReportsList();
+  }).then(function(){
+    return loadReportDetail(newReportId);
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "Report scanned. Here's your free summary below -- unlock the full breakdown to see everything and generate dispute letters.");
+    render();
+  }).catch(function(e){
+    setBusy(false);
+    setBanner("error", e.message);
+    render();
+  });
+}
+
+function doCheckout(reportId){
+  clearBanner(); setBusy(true);
+  api("/billing/checkout/" + reportId, { method: "POST" }).then(function(res){
+    if (res.checkout_url){
+      // Real Stripe configured -- send them to hosted checkout.
+      window.location.href = res.checkout_url;
+      return;
+    }
+    // Dev-mode auto-unlock.
+    return refreshActiveReport().then(function(){
+      return loadReportsList();
+    }).then(function(){
+      setBusy(false);
+      setBanner("ok", "Unlocked. Full breakdown, letters, and recommendations are ready below.");
+      render();
+    });
+  }).catch(function(e){
+    setBusy(false);
+    setBanner("error", e.message);
+  });
+}
+
+function doGenerateLetters(reportId){
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/letters/generate", { method: "POST" }).then(function(){
+    return refreshActiveReport();
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "Dispute letters generated below -- review before mailing.");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doSecondaryBureauSweep(reportId){
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/letters/secondary-bureau-sweep", { method: "POST" }).then(function(){
+    return refreshActiveReport();
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "Secondary/specialty bureau letters generated below.");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doRecordOutcome(reportId, letterId, outcomeStatus, notes){
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/letters/" + letterId + "/outcome", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ outcome_status: outcomeStatus, outcome_notes: notes || null }),
+  }).then(function(){
+    return refreshActiveReport();
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "Outcome recorded. Thanks -- this is what makes the platform's success-rate numbers real.");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doEscalateMov(reportId, letterId){
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/letters/" + letterId + "/escalate-mov", { method: "POST" }).then(function(){
+    return refreshActiveReport();
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "Method of Verification request generated below.");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doIdentityTheftBlock(reportId, tradelineId, reportNumber){
+  if (!tradelineId || !reportNumber){
+    setBanner("error", "Pick an account and enter your FTC identity theft report number.");
+    render();
+    return;
+  }
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/letters/identity-theft-block/" + tradelineId, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ identity_theft_report_number: reportNumber }),
+  }).then(function(){
+    return refreshActiveReport();
+  }).then(function(){
+    setBusy(false);
+    setBanner("ok", "Identity theft block letter generated below (FCRA §605B).");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+/* ---------- admin actions ---------- */
+function doCreateOrg(name, slug){
+  clearBanner(); setBusy(true);
+  api("/organizations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: name, slug: slug }),
+  }).then(function(org){
+    setBusy(false);
+    setBanner("ok", "Organization created: " + org.name + " (slug: " + org.slug + "). Share signup links as /?org=" + org.slug);
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doCreateStaff(orgSlug, email, password, role){
+  clearBanner(); setBusy(true);
+  api("/organizations/" + encodeURIComponent(orgSlug) + "/staff", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email, password: password, role: role }),
+  }).then(function(user){
+    setBusy(false);
+    setBanner("ok", "Staff login created: " + user.email + " (" + user.role + ") for " + orgSlug + ". Share those credentials with the licensee directly.");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function loadAnalytics(cb){
+  api("/analytics/outcomes").then(function(stats){
+    cb(null, stats);
+  }).catch(function(e){
+    cb(e, null);
+  });
+}
+
+/* ---------- partner / affiliate offers ---------- */
+// Public list (active offers only) -- works for anonymous visitors too, so
+// it can show on the pre-signup "establish credit" walkthrough, not just
+// inside a logged-in client's dashboard.
+var publicOffers = null;
+var publicOffersError = null;
+var publicOffersLoading = false;
+
+function loadPublicOffers(){
+  if (publicOffersLoading || publicOffers) return;
+  publicOffersLoading = true;
+  api("/partner-offers").then(function(list){
+    publicOffersLoading = false;
+    publicOffers = list;
+    render();
+  }).catch(function(e){
+    publicOffersLoading = false;
+    publicOffersError = e.message;
+  });
+}
+
+// Admin's full list (drafts + live), and the CRUD actions that manage it.
+var adminOffers = null;
+var adminOffersError = null;
+var adminOffersLoading = false;
+
+function loadAdminOffers(){
+  if (adminOffersLoading) return;
+  adminOffersLoading = true;
+  api("/partner-offers?all=true").then(function(list){
+    adminOffersLoading = false;
+    adminOffers = list;
+    render();
+  }).catch(function(e){
+    adminOffersLoading = false;
+    adminOffersError = e.message;
+    render();
+  });
+}
+
+function doCreatePartnerOffer(payload){
+  clearBanner(); setBusy(true);
+  api("/partner-offers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then(function(offer){
+    setBusy(false);
+    setBanner("ok", "Offer added: " + offer.name + ". It's saved as a draft -- hit Activate when you're ready for clients to see it.");
+    adminOffers = null; publicOffers = null;
+    loadAdminOffers();
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doTogglePartnerOffer(offerId, makeActive){
+  clearBanner(); setBusy(true);
+  api("/partner-offers/" + offerId, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ is_active: makeActive }),
+  }).then(function(){
+    setBusy(false);
+    adminOffers = null; publicOffers = null;
+    loadAdminOffers();
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doDeletePartnerOffer(offerId){
+  clearBanner(); setBusy(true);
+  api("/partner-offers/" + offerId, { method: "DELETE" }).then(function(){
+    setBusy(false);
+    adminOffers = null; publicOffers = null;
+    loadAdminOffers();
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+/* ---------- "establish credit from scratch" walkthrough nav ---------- */
+function openEstablish(fromView){
+  state.establishFrom = fromView || state.view;
+  state.view = "establish";
+  clearBanner();
+  render();
+}
+
+/* ---------- chat widget ---------- */
+var chatOpen = false;
+var chatMessages = [];   // [{role:'user'|'assistant', content}], for display
+var chatHistory = [];    // same shape, capped, sent to the API as conversation context
+var chatSending = false;
+
+function toggleChat(){ chatOpen = !chatOpen; render(); }
+
+function doSendChat(text){
+  text = (text || "").trim();
+  if (!text || chatSending) return;
+  var historyBeforeThisTurn = chatHistory.slice();
+  chatMessages.push({ role: "user", content: text });
+  chatHistory.push({ role: "user", content: text });
+  chatHistory = chatHistory.slice(-20);
+  chatSending = true;
+  render();
+
+  api("/assistant/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text, report_id: state.activeReportId || null, history: historyBeforeThisTurn }),
+  }).then(function(res){
+    chatSending = false;
+    chatMessages.push({ role: "assistant", content: res.reply });
+    chatHistory.push({ role: "assistant", content: res.reply });
+    chatHistory = chatHistory.slice(-20);
+    render();
+  }).catch(function(e){
+    chatSending = false;
+    chatMessages.push({ role: "assistant", content: "Sorry, something went wrong: " + e.message });
+    render();
+  });
+}
+
+function renderChatWidget(){
+  if (state.view !== "client") return "";
+  var html = "";
+  if (chatOpen){
+    var msgs = chatMessages.map(function(m){
+      return '<div class="chat-msg ' + (m.role === "user" ? "user" : "assistant") + '">' + esc(m.content) + '</div>';
+    }).join("");
+    if (!chatMessages.length){
+      msgs = '<div class="chat-msg assistant">Hi! I can walk you through how BlackBridge works, or answer questions about your own report once you’ve uploaded one — what do you want to know?</div>';
+    }
+    html += '' +
+    '<div class="chat-panel">' +
+      '<div class="chat-head"><strong>BlackBridge Assistant</strong><button type="button" class="icon-btn" data-chat-close="1">✕</button></div>' +
+      '<div class="chat-body" id="chatBody">' + msgs + (chatSending ? '<div class="chat-msg-loading"><span class="spinner" style="border-top-color:var(--text-dim);border-color:rgba(0,0,0,.15);"></span></div>' : '') + '</div>' +
+      '<form class="chat-input-row" id="chatForm">' +
+        '<input type="text" id="chatInput" placeholder="Ask a question…" autocomplete="off">' +
+        '<button type="submit"' + (chatSending ? " disabled" : "") + '>Send</button>' +
+      '</form>' +
+    '</div>';
+  }
+  html += '<button type="button" class="chat-toggle" data-chat-toggle="1" title="Help / walkthrough">' + (chatOpen ? "✕" : "💬") + '</button>';
+  return html;
+}
+
+/* ---------- render: shell ---------- */
+function render(){
+  var app = document.getElementById("app");
+  var topActions = document.getElementById("topActions");
+  topActions.innerHTML = "";
+
+  if (state.token && state.tokenPayload){
+    var pill = document.createElement("span");
+    pill.className = "pill";
+    pill.textContent = state.tokenPayload.type === "user" ? "Staff / Admin" : "My account";
+    var out = document.createElement("button");
+    out.className = "secondary";
+    out.textContent = "Log out";
+    out.onclick = logout;
+    topActions.appendChild(pill);
+    topActions.appendChild(out);
+  }
+
+  var html = "";
+  if (state.banner){
+    html += '<div class="banner ' + state.banner.kind + '">' + esc(state.banner.text) + "</div>";
+  }
+
+  if (state.view === "auth"){
+    html += renderAuthView();
+  } else if (state.view === "client"){
+    html += state.activeReportId ? renderReportDetailView() : renderClientDashboard();
+  } else if (state.view === "admin"){
+    html += renderAdminView();
+  } else if (state.view === "establish"){
+    html += renderEstablishView();
+  } else {
+    html += '<div class="empty">Loading…</div>';
+  }
+
+  html += renderChatWidget();
+
+  app.innerHTML = html;
+  bindEvents();
+
+  if (chatOpen){
+    var chatBody = document.getElementById("chatBody");
+    if (chatBody) chatBody.scrollTop = chatBody.scrollHeight;
+  }
+}
+
+/* ---------- render: auth ---------- */
+var authTab = "signup";
+function renderAuthView(){
+  var orgFromUrl = qs("org") || DEFAULT_ORG_SLUG || "";
+  return '' +
+  '<div class="card">' +
+    '<h2>Welcome</h2>' +
+    '<p>Upload your credit report and see what’s disputable in minutes. Full breakdown and dispute letters unlock after a one-time report fee.</p>' +
+    '<div class="tabs">' +
+      '<button data-tab="signup" class="' + (authTab === "signup" ? "active" : "") + '">Create account</button>' +
+      '<button data-tab="login" class="' + (authTab === "login" ? "active" : "") + '">Log in</button>' +
+    '</div>' +
+    (authTab === "signup" ? renderSignupForm(orgFromUrl) : renderLoginForm()) +
+    '<details class="admin-toggle"><summary>Organization / platform staff login</summary>' +
+      '<div style="margin-top:10px;">' + renderStaffLoginForm() + '</div>' +
+    '</details>' +
+  '</div>' +
+  '<div class="card">' +
+    '<h3 style="margin-bottom:6px;">Don’t have a credit file yet?</h3>' +
+    '<p>If nothing comes back when you pull your reports, there’s nothing to scan yet -- but there is a path to get your first one started.</p>' +
+    '<button type="button" class="secondary block" data-open-establish="1">See how to establish credit from scratch</button>' +
+  '</div>';
+}
+
+function renderSignupForm(orgFromUrl){
+  return '' +
+  '<form id="signupForm" class="stack">' +
+    '<div class="field"><label>Email</label><input type="email" id="su_email" required></div>' +
+    '<div class="field"><label>Full name</label><input type="text" id="su_name"></div>' +
+    '<div class="field"><label>Password</label><input type="password" id="su_password" required minlength="6"></div>' +
+    '<div class="field"><label>Organization code' + (orgFromUrl ? "" : " (ask whoever referred you, or your operator)") + '</label>' +
+      '<input type="text" id="su_org" value="' + esc(orgFromUrl) + '" ' + (orgFromUrl ? "readonly" : "") + ' required></div>' +
+    '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Create account") + '</button>' +
+  '</form>';
+}
+
+function renderLoginForm(){
+  return '' +
+  '<form id="loginForm" class="stack">' +
+    '<div class="field"><label>Email</label><input type="email" id="li_email" required></div>' +
+    '<div class="field"><label>Password</label><input type="password" id="li_password" required></div>' +
+    '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Log in") + '</button>' +
+  '</form>';
+}
+
+function renderStaffLoginForm(){
+  return '' +
+  '<form id="staffLoginForm" class="stack">' +
+    '<p class="muted">Platform admins and organization staff log in here to manage licensee accounts and view outcome analytics.</p>' +
+    '<div class="field"><label>Email</label><input type="email" id="admin_email" required></div>' +
+    '<div class="field"><label>Password</label><input type="password" id="admin_password" required></div>' +
+    '<button type="submit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Log in as staff</button>' +
+  '</form>';
+}
+
+function spinnerHtml(){ return '<span class="spinner"></span>'; }
+
+/* ---------- render: client dashboard ---------- */
+function renderClientDashboard(){
+  var list = "";
+  if (!state.reports.length){
+    list = '<div class="empty">No reports yet. Upload one below to get started.</div>';
+  } else {
+    list = state.reports.map(function(r){
+      var badge = r.is_paid ? '<span class="badge paid">Unlocked</span>' : '<span class="badge unpaid">Free summary</span>';
+      return '' +
+      '<div class="report-item" data-open-report="' + esc(r.report_id) + '">' +
+        '<div>' +
+          '<div><strong>Report</strong> <span class="muted">' + esc(r.report_id.slice(0,8)) + '…</span></div>' +
+          '<div class="meta">' + r.tradeline_count + ' accounts · ' + r.violation_count + ' findings · ' + esc(r.status) + '</div>' +
+        '</div>' +
+        badge +
+      '</div>';
+    }).join("");
+  }
+
+  return '' +
+  '<div class="card">' +
+    '<h2>Upload a credit report</h2>' +
+    '<p>Accepts the demo <code>.txt</code> sample, a real PDF export, or basically any other file -- we’ll read it and pull out every account.</p>' +
+    '<form id="uploadForm" class="stack">' +
+      '<div class="field"><input type="file" id="uploadFile" required></div>' +
+      '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Upload & scan") + '</button>' +
+    '</form>' +
+  '</div>' +
+  '<div class="card">' +
+    '<h2>Your reports</h2>' +
+    list +
+  '</div>' +
+  '<div class="card">' +
+    '<h3 style="margin-bottom:6px;">No credit file yet?</h3>' +
+    '<p>You don’t need a report to get started -- see the general path most people use to open their first account and start building history.</p>' +
+    '<button type="button" class="secondary block" data-open-establish="1">See how to establish credit from scratch</button>' +
+  '</div>' +
+  renderPartnerOffersSection();
+}
+
+/* ---------- render: establish-credit-from-scratch walkthrough ---------- */
+function renderEstablishView(){
+  var steps = [
+    ["Check where you stand", "Pull your three free reports at annualcreditreport.com. If nothing comes back, that’s normal -- everyone starts at zero, and there’s nothing to “fix” yet."],
+    ["Open one starter account", "A secured credit card (a refundable deposit becomes your credit line) or a credit-builder loan (a bank holds the funds while you make payments, and those payments are what gets reported) are the two standard starting points. Pick one to start -- you don’t need both at once."],
+    ["Ask about becoming an authorized user", "If someone you trust has an older card in good standing -- on-time payments, low balance -- being added as an authorized user can put years of history on your file, sometimes within a reporting cycle or two."],
+    ["Get bills you already pay to count", "Services like Experian Boost can add on-time phone and utility payments to your file, and some rent-reporting services do the same for rent -- money you’re already spending, put to work."],
+    ["Use it lightly, pay on time, every time", "Keep any balance well under the limit (under 10% if you can manage it) and pay it off in full each month. Payment history and how much of your limit you’re using are the two biggest factors in most scoring models."],
+    ["Give it time", "A reliable score generally needs a few months of reporting history to form. Check back periodically, and avoid opening several new accounts at once while you’re building."],
+    ["Come back once you have a report", "Once you’ve got a credit file, BlackBridge can scan it for reporting errors and generate dispute letters for anything that doesn’t check out."],
+  ];
+  var stepsHtml = steps.map(function(s, i){
+    return '' +
+    '<div class="guide-step">' +
+      '<div class="num">' + (i + 1) + '</div>' +
+      '<div class="body"><h3>' + esc(s[0]) + '</h3><p>' + esc(s[1]) + '</p></div>' +
+    '</div>';
+  }).join("");
+
+  return '' +
+  '<button class="link backlink" data-establish-back="1">← Back</button>' +
+  '<div class="card">' +
+    '<h2>Establishing credit from scratch</h2>' +
+    '<p>No file yet? Here’s the general path most people use to get their first credit history started. This is educational information, not personalized financial advice, and nothing here guarantees a particular outcome or timeline -- results depend on your own situation and how lenders report it.</p>' +
+    stepsHtml +
+  '</div>' +
+  renderPartnerOffersSection(["secured_card", "credit_builder_loan", "rent_reporting", "other"]);
+}
+
+/* ---------- render: partner / affiliate offers ---------- */
+function renderPartnerOffersSection(filterCategories){
+  if (!publicOffers || !publicOffers.length) return "";
+  var offers = publicOffers;
+  if (filterCategories){
+    offers = offers.filter(function(o){ return filterCategories.indexOf(o.category) !== -1; });
+  }
+  if (!offers.length) return "";
+
+  var cards = offers.map(function(o){
+    return '' +
+    '<div class="offer-card">' +
+      '<div class="offer-head"><strong>' + esc(o.name) + '</strong><span class="pill">' + esc((o.category || "").replace(/_/g, " ")) + '</span></div>' +
+      '<p>' + esc(o.description) + '</p>' +
+      '<div class="muted" style="font-size:11.5px;">' + esc(o.disclosure_note) + '</div>' +
+      '<a class="btn" href="' + esc(o.affiliate_url) + '" target="_blank" rel="noopener sponsored">' + esc(o.cta_label) + '</a>' +
+    '</div>';
+  }).join("");
+
+  return '<div class="card"><h2>Partner picks</h2><div class="offer-grid">' + cards + '</div></div>';
+}
+
+/* ---------- render: report detail ---------- */
+function renderReportDetailView(){
+  var b = state.activeReport;
+  if (!b || !b.summary) return '<div class="empty">Loading report…</div>';
+  var s = b.summary;
+
+  var html = '<button class="link backlink" data-back="1">← Back to reports</button>';
+
+  html += '<div class="card">' +
+    '<div class="row-wrap" style="justify-content:space-between;">' +
+      '<h2 style="margin:0;">Report summary</h2>' +
+      (s.is_paid ? '<span class="badge paid">Unlocked</span>' : '<span class="badge unpaid">Free tier</span>') +
+    '</div>' +
+    '<div class="grid-2" style="margin-top:12px;">' +
+      '<div><div class="muted">Accounts found</div><div style="font-size:22px;font-weight:700;">' + s.tradeline_count + '</div></div>' +
+      '<div><div class="muted">Findings (disputable items)</div><div style="font-size:22px;font-weight:700;">' + s.violation_count + '</div></div>' +
+    '</div>';
+
+  if (Object.keys(s.violations_by_type || {}).length){
+    html += '<div class="divider"></div><table><tr><th>Finding type</th><th>Count</th></tr>';
+    Object.keys(s.violations_by_type).forEach(function(k){
+      html += '<tr><td>' + esc(k) + '</td><td>' + s.violations_by_type[k] + '</td></tr>';
+    });
+    html += '</table>';
+  }
+
+  if (b.recSummary){
+    html += '<div class="divider"></div><h3>What to do next — quick read</h3>' +
+      '<div class="row-wrap">' +
+        '<span class="pill">' + b.recSummary.total + ' suggestions</span>';
+    Object.keys(b.recSummary.by_impact_tier || {}).forEach(function(t){
+      html += '<span class="badge ' + esc(t) + '">' + esc(t) + ': ' + b.recSummary.by_impact_tier[t] + '</span>';
+    });
+    html += '</div><p class="disclaimer">' + esc(b.recSummary.disclaimer) + '</p>';
+  }
+
+  if (!s.is_paid){
+    html += '<div class="divider"></div>' +
+      '<p>Unlock the full breakdown to see every finding with its legal basis, generate ready-to-mail dispute letters, sweep the ~10 specialty/secondary bureaus, and get the complete "remove this / add that" action plan.</p>' +
+      '<button data-checkout="' + esc(s.report_id) + '" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Unlock full breakdown") + '</button>';
+  }
+
+  html += '</div>';
+
+  html += renderProgressSection(b);
+
+  if (s.is_paid){
+    html += renderViolationsSection(b);
+    html += renderRecommendationsSection(b);
+    html += renderLettersSection(b, s.report_id);
+    html += renderIdentityTheftSection(b, s.report_id);
+    html += renderLitigationSection(b);
+  }
+
+  return html;
+}
+
+function renderProgressSection(b){
+  if (!b.progress) return "";
+  var p = b.progress;
+  var steps = p.steps.map(function(step, i){
+    var cls = step.done ? "done" : (step.key === p.current_stage ? "current" : "");
+    var isLast = i === p.steps.length - 1;
+    return '' +
+    '<div class="step ' + cls + '">' +
+      (isLast ? "" : '<div class="line"></div>') +
+      '<div class="dot2">' + (step.done ? "✓" : (i + 1)) + '</div>' +
+      '<div class="label">' + esc(step.label) + '</div>' +
+    '</div>';
+  }).join("");
+
+  var counts = '' +
+    '<div class="row-wrap" style="margin-top:14px;">' +
+      '<span class="pill">' + p.letters_generated + ' letters generated</span>' +
+      '<span class="pill">' + p.letters_with_outcome + ' outcomes recorded</span>' +
+      (p.letters_pending_outcome > 0 ? '<span class="pill">' + p.letters_pending_outcome + ' awaiting response</span>' : "") +
+      (p.litigation_candidates ? '<span class="badge high">' + p.litigation_candidates + ' flagged for attorney review</span>' : "") +
+    '</div>';
+
+  var currentLine = p.current_stage === "complete"
+    ? '<p class="disclaimer">All pipeline steps complete for this report.</p>'
+    : '<p class="disclaimer">Currently: ' + esc(p.current_stage_label) + '</p>';
+
+  return '<div class="card"><h2>Progress</h2><div class="stepper">' + steps + '</div>' + counts + currentLine + '</div>';
+}
+
+function renderViolationsSection(b){
+  if (!b.violations.length){
+    return '<div class="card"><h2>Findings</h2><div class="empty">No disputable findings on this report.</div></div>';
+  }
+  var creditorByTradeline = {};
+  b.tradelines.forEach(function(t){ creditorByTradeline[t.id] = t.creditor_name; });
+
+  var items = b.violations.map(function(v){
+    var creditor = creditorByTradeline[v.tradeline_id] || "Account";
+    return '' +
+    '<div class="violation">' +
+      '<div class="top">' +
+        '<div><strong>' + esc(creditor) + '</strong><div class="muted">' + esc(v.rule_id) + '</div></div>' +
+        '<span class="badge ' + esc(v.severity) + '">' + esc(v.severity) + '</span>' +
+      '</div>' +
+      '<p style="margin-top:8px;">' + esc(v.description) + '</p>' +
+      '<div class="muted">Legal basis: ' + esc(v.legal_basis) + '</div>' +
+    '</div>';
+  }).join("");
+  return '<div class="card"><h2>Findings (' + b.violations.length + ')</h2>' + items + '</div>';
+}
+
+function renderRecommendationsSection(b){
+  if (!b.recommendations.length) return "";
+  var items = b.recommendations.map(function(r){
+    return '' +
+    '<div class="violation">' +
+      '<div class="top">' +
+        '<div><strong>' + esc(r.title) + '</strong><div class="muted">' + esc(r.factor_label) + (r.category === "remove" ? " · dispute" : " · credit-building") + '</div></div>' +
+        '<span class="badge ' + esc(r.impact_tier) + '">' + esc(r.impact_tier) + ' impact</span>' +
+      '</div>' +
+      '<p style="margin-top:8px;">' + esc(r.description) + '</p>' +
+      (r.legal_basis ? '<div class="muted">Legal basis: ' + esc(r.legal_basis) + '</div>' : "") +
+    '</div>';
+  }).join("");
+  return '<div class="card"><h2>What to do next</h2>' + items + '<p class="disclaimer">Impact tiers are qualitative, based on published FICO factor weights — never a promised or predicted point change.</p></div>';
+}
+
+function renderLettersSection(b, reportId){
+  var actions = '' +
+  '<div class="row-wrap">' +
+    '<button data-gen-letters="' + esc(reportId) + '"' + (state.busy ? " disabled" : "") + '>Generate dispute letters</button>' +
+    '<button data-sweep="' + esc(reportId) + '" class="secondary"' + (state.busy ? " disabled" : "") + '>Secondary bureau sweep</button>' +
+  '</div>';
+
+  var list = "";
+  if (!b.letters.length){
+    list = '<div class="empty">No letters generated yet.</div>';
+  } else {
+    list = b.letters.map(function(l){
+      return renderLetterCard(l, reportId);
+    }).join("");
+  }
+
+  return '<div class="card"><h2>Dispute letters</h2>' + actions + '<div style="margin-top:14px;">' + list + '</div></div>';
+}
+
+function renderLetterCard(l, reportId){
+  var outcomeBadge = l.outcome_status
+    ? '<span class="badge ' + (l.outcome_status === "deleted" || l.outcome_status === "updated" ? "low" : l.outcome_status === "verified" ? "high" : "medium") + '">' + esc(l.outcome_status) + '</span>'
+    : '<span class="badge unpaid">awaiting outcome</span>';
+
+  var movButton = "";
+  if (l.outcome_status === "verified" && (l.letter_type === "fcra_611" || l.letter_type === "fcra_623_direct")){
+    movButton = '<button data-mov="' + esc(reportId) + '|' + esc(l.id) + '" class="secondary"' + (state.busy ? " disabled" : "") + '>Escalate to Method of Verification</button>';
+  }
+
+  return '' +
+  '<div class="letter">' +
+    '<div class="top row-wrap" style="justify-content:space-between;">' +
+      '<div><strong>' + esc(l.letter_type) + '</strong><div class="muted">To: ' + esc(l.recipient) + ' · ' + fmtDate(l.generated_at) + '</div></div>' +
+      outcomeBadge +
+    '</div>' +
+    '<details style="margin-top:8px;"><summary class="muted">View letter text</summary><pre>' + esc(l.body_text) + '</pre></details>' +
+    '<div class="divider"></div>' +
+    '<form class="outcome-form row-wrap" data-letter="' + esc(reportId) + '|' + esc(l.id) + '">' +
+      '<select class="outcome-status">' +
+        '<option value="">Report outcome…</option>' +
+        '<option value="deleted">Deleted</option>' +
+        '<option value="updated">Updated / corrected</option>' +
+        '<option value="verified">Verified (no change)</option>' +
+        '<option value="no_response">No response (45+ days)</option>' +
+      '</select>' +
+      '<input type="text" class="outcome-notes" placeholder="Notes (optional)" style="flex:1;min-width:160px;">' +
+      '<button type="submit" class="secondary"' + (state.busy ? " disabled" : "") + '>Save outcome</button>' +
+    '</form>' +
+    (movButton ? '<div style="margin-top:8px;">' + movButton + '</div>' : "") +
+  '</div>';
+}
+
+function renderIdentityTheftSection(b, reportId){
+  var options = b.tradelines.map(function(t){
+    return '<option value="' + esc(t.id) + '">' + esc(t.creditor_name || "Unnamed account") + (t.flagged_identity_theft ? " (already flagged)" : "") + '</option>';
+  }).join("");
+
+  return '' +
+  '<div class="card">' +
+    '<h2>Identity theft block (FCRA §605B)</h2>' +
+    '<p>If an account isn’t yours, this forces a block within 4 business days — much faster than a standard dispute. It requires your own FTC identity theft report number from <a href="https://www.identitytheft.gov" target="_blank" rel="noopener">identitytheft.gov</a>; we never guess at this.</p>' +
+    '<form id="idTheftForm" data-report="' + esc(reportId) + '" class="stack">' +
+      '<div class="field"><label>Account</label><select id="idt_tradeline">' + options + '</select></div>' +
+      '<div class="field"><label>FTC identity theft report number</label><input type="text" id="idt_number" placeholder="e.g. 123456789"></div>' +
+      '<button type="submit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Generate block letter</button>' +
+    '</form>' +
+  '</div>';
+}
+
+function renderLitigationSection(b){
+  if (!b.litigation.length) return "";
+  var items = b.litigation.map(function(c){
+    return '' +
+    '<div class="violation">' +
+      '<div class="top"><strong>' + esc(c.creditor_name || "Account") + '</strong><span class="badge high">' + esc(c.reason) + '</span></div>' +
+      '<p style="margin-top:8px;">' + esc(c.detail) + '</p>' +
+      '<p class="disclaimer">' + esc(c.statutory_note) + '</p>' +
+    '</div>';
+  }).join("");
+  return '<div class="card"><h2>Worth a lawyer’s review</h2>' + items + '</div>';
+}
+
+/* ---------- render: admin / operator console ---------- */
+var adminAnalytics = null;
+var adminAnalyticsError = null;
+var staffClients = null;
+var staffClientsError = null;
+var staffSelectedClientId = null;
+var staffSelectedClientReports = null;
+var staffSelectedClientError = null;
+var staffClientsLoading = false;
+
+function loadStaffClients(){
+  if (staffClientsLoading) return;
+  staffClientsLoading = true;
+  api("/staff/clients").then(function(list){
+    staffClientsLoading = false;
+    staffClients = list;
+    render();
+  }).catch(function(e){
+    staffClientsLoading = false;
+    staffClientsError = e.message;
+    render();
+  });
+}
+
+function openStaffClient(clientId){
+  staffSelectedClientId = clientId;
+  staffSelectedClientReports = null;
+  staffSelectedClientError = null;
+  render();
+  api("/staff/clients/" + clientId + "/reports").then(function(reports){
+    staffSelectedClientReports = reports;
+    render();
+  }).catch(function(e){
+    staffSelectedClientError = e.message;
+    render();
+  });
+}
+
+function renderStaffClientsCard(){
+  if (staffSelectedClientId){
+    var client = (staffClients || []).filter(function(c){ return c.id === staffSelectedClientId; })[0];
+    var html = '<div class="card">' +
+      '<button class="link backlink" data-staff-back="1">← Back to clients</button>' +
+      '<h2>' + esc(client ? (client.full_name || client.email) : "Client") + '</h2>';
+    if (staffSelectedClientError){
+      html += '<div class="empty">' + esc(staffSelectedClientError) + '</div>';
+    } else if (!staffSelectedClientReports){
+      html += '<div class="empty">Loading…</div>';
+    } else if (!staffSelectedClientReports.length){
+      html += '<div class="empty">This client hasn’t uploaded a report yet.</div>';
+    } else {
+      html += staffSelectedClientReports.map(function(p){
+        return '<div class="violation">' +
+          '<div class="top"><strong>Report ' + esc(p.report_id.slice(0,8)) + '…</strong>' +
+            '<span class="badge ' + (p.current_stage === "complete" ? "low" : "medium") + '">' + esc(p.current_stage_label) + '</span></div>' +
+          '<div class="muted" style="margin-top:6px;">' + p.tradeline_count + ' accounts · ' + p.violation_count + ' findings · ' +
+            p.letters_generated + ' letters · ' + p.letters_with_outcome + ' outcomes recorded' +
+            (p.litigation_candidates ? ' · ' + p.litigation_candidates + ' flagged for attorney review' : '') + '</div>' +
+        '</div>';
+      }).join("");
+    }
+    html += '</div>';
+    return html;
+  }
+
+  var html = '<div class="card"><h2>Your clients</h2>';
+  if (staffClientsError){
+    html += '<p class="muted">' + esc(staffClientsError) + '</p>';
+  } else if (!staffClients){
+    html += '<div class="empty">Loading…</div>';
+  } else if (!staffClients.length){
+    html += '<div class="empty">No clients have signed up under your organization yet.</div>';
+  } else {
+    html += staffClients.map(function(c){
+      var lp = c.latest_report_progress;
+      var stageText = lp ? lp.current_stage_label : "no reports yet";
+      return '' +
+      '<div class="client-row" data-open-client="' + esc(c.id) + '">' +
+        '<div><strong>' + esc(c.full_name || c.email) + '</strong><div class="meta muted">' + c.report_count + ' report(s) · latest: ' + esc(stageText) + '</div></div>' +
+        (lp ? '<span class="badge ' + (lp.current_stage === "complete" ? "low" : "medium") + '">' + esc(stageText) + '</span>' : '<span class="badge unpaid">new</span>') +
+      '</div>';
+    }).join("");
+  }
+  html += '</div>';
+  return html;
+}
+
+function renderPartnerOffersAdminCard(){
+  var html = '<div class="card"><h2>Partner offers</h2>' +
+    '<p>Vendors you want to promote to clients (a secured card, a credit-builder loan like Kovo, a rent-reporting service, and so on) -- almost always an affiliate link. New offers start as drafts (inactive) so nothing goes live by accident. <strong>Before listing anything tradeline- or piggybacking-related, get your own legal review first</strong> -- issuers frequently prohibit it and it has drawn FTC/CFPB scrutiny.</p>';
+
+  if (adminOffersError){
+    html += '<div class="empty">' + esc(adminOffersError) + '</div>';
+  } else if (!adminOffers){
+    html += '<div class="empty">Loading…</div>';
+  } else if (!adminOffers.length){
+    html += '<div class="empty">No offers yet -- add one below.</div>';
+  } else {
+    html += adminOffers.map(function(o){
+      return '' +
+      '<div class="offer-admin-row">' +
+        '<div class="row-wrap" style="justify-content:space-between;">' +
+          '<div><strong>' + esc(o.name) + '</strong> <span class="muted">(' + esc((o.category || "").replace(/_/g, " ")) + ')</span></div>' +
+          (o.is_active ? '<span class="badge paid">Live</span>' : '<span class="badge unpaid">Draft</span>') +
+        '</div>' +
+        '<p class="muted" style="margin:6px 0;">' + esc(o.description) + '</p>' +
+        '<div class="row-wrap">' +
+          '<button type="button" class="secondary" data-offer-toggle="' + esc(o.id) + '" data-offer-active="' + (o.is_active ? "0" : "1") + '"' + (state.busy ? " disabled" : "") + '>' + (o.is_active ? "Deactivate" : "Activate") + '</button>' +
+          '<button type="button" class="danger" data-offer-delete="' + esc(o.id) + '"' + (state.busy ? " disabled" : "") + '>Delete</button>' +
+        '</div>' +
+      '</div>';
+    }).join("");
+  }
+
+  html += '<div class="divider"></div><h3>Add a new offer</h3>' +
+    '<form id="createOfferForm" class="grid-2">' +
+      '<div class="field"><label>Name</label><input type="text" id="offer_name" required placeholder="e.g. Kovo"></div>' +
+      '<div class="field"><label>Category</label><select id="offer_category">' +
+        '<option value="credit_builder_loan">Credit-builder loan</option>' +
+        '<option value="secured_card">Secured card</option>' +
+        '<option value="rent_reporting">Rent reporting</option>' +
+        '<option value="other">Other</option>' +
+      '</select></div>' +
+      '<div class="field" style="grid-column:1/-1;"><label>Description</label><textarea id="offer_description" required></textarea></div>' +
+      '<div class="field"><label>Button label</label><input type="text" id="offer_cta" value="Learn more"></div>' +
+      '<div class="field"><label>Affiliate / referral URL</label><input type="text" id="offer_url" required placeholder="https://…"></div>' +
+      '<div class="field" style="grid-column:1/-1;"><label>Disclosure text (shown next to the offer)</label><input type="text" id="offer_disclosure" placeholder="Sponsored -- BlackBridge may earn a commission if you sign up through this link."></div>' +
+    '</form>' +
+    '<button id="createOfferSubmit" class="block"' + (state.busy ? " disabled" : "") + '>Add offer (saved as draft)</button>' +
+  '</div>';
+  return html;
+}
+
+function renderAdminView(){
+  var html = renderStaffClientsCard();
+
+  html += '<div class="card"><h2>Create a licensee organization</h2>' +
+    '<p>Each organization gets its own branded signup link: share <code>' + location.origin + '/?org=&lt;slug&gt;</code> with that licensee’s customers.</p>' +
+    '<form id="createOrgForm" class="grid-2">' +
+      '<div class="field"><label>Organization name</label><input type="text" id="org_name" required></div>' +
+      '<div class="field"><label>Slug (URL-safe)</label><input type="text" id="org_slug" required></div>' +
+    '</form>' +
+    '<button id="createOrgSubmit" class="block"' + (state.busy ? " disabled" : "") + '>Create organization</button>' +
+  '</div>';
+
+  html += '<div class="card"><h2>Create a staff login for an organization</h2>' +
+    '<p>Gives a licensee their first login for this operator console (tracking their own clients’ progress). Use the organization’s slug from when you created it.</p>' +
+    '<form id="createStaffForm" class="grid-2">' +
+      '<div class="field"><label>Organization slug</label><input type="text" id="staff_org_slug" required></div>' +
+      '<div class="field"><label>Role</label><select id="staff_role"><option value="org_admin">Org admin</option><option value="org_staff">Org staff</option></select></div>' +
+      '<div class="field"><label>Email</label><input type="email" id="staff_email" required></div>' +
+      '<div class="field"><label>Password</label><input type="password" id="staff_password" required minlength="6"></div>' +
+    '</form>' +
+    '<button id="createStaffSubmit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Create staff login</button>' +
+  '</div>';
+
+  html += renderPartnerOffersAdminCard();
+
+  html += '<div class="card"><h2>Outcome analytics</h2>';
+  if (adminAnalyticsError){
+    html += '<div class="empty">' + esc(adminAnalyticsError) + '</div>';
+  } else if (!adminAnalytics){
+    html += '<div class="empty">Loading…</div>';
+  } else {
+    html += '<div class="grid-2">' +
+      '<div><div class="muted">Letters with a recorded outcome</div><div style="font-size:22px;font-weight:700;">' + adminAnalytics.total_letters_with_outcome + '</div></div>' +
+      '<div><div class="muted">Success rate (deleted + updated)</div><div style="font-size:22px;font-weight:700;">' + (adminAnalytics.success_rate === null || adminAnalytics.success_rate === undefined ? "—" : Math.round(adminAnalytics.success_rate*100) + "%") + '</div></div>' +
+    '</div>';
+    if (Object.keys(adminAnalytics.by_rule_id || {}).length){
+      html += '<div class="divider"></div><table><tr><th>Rule</th><th>Total</th><th>Success</th></tr>';
+      Object.keys(adminAnalytics.by_rule_id).forEach(function(k){
+        var row = adminAnalytics.by_rule_id[k];
+        html += '<tr><td>' + esc(k) + '</td><td>' + row.total + '</td><td>' + row.success + '</td></tr>';
+      });
+      html += '</table>';
+    }
+  }
+  html += '</div>';
+  return html;
+}
+
+/* ---------- event binding ---------- */
+function bindEvents(){
+  var app = document.getElementById("app");
+
+  var tabButtons = app.querySelectorAll("[data-tab]");
+  tabButtons.forEach(function(btn){
+    btn.addEventListener("click", function(){
+      authTab = btn.getAttribute("data-tab");
+      clearBanner();
+      render();
+    });
+  });
+
+  var signupForm = document.getElementById("signupForm");
+  if (signupForm){
+    signupForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      doClientSignup(
+        document.getElementById("su_email").value.trim(),
+        document.getElementById("su_password").value,
+        document.getElementById("su_name").value.trim(),
+        document.getElementById("su_org").value.trim()
+      );
+    });
+  }
+
+  var loginForm = document.getElementById("loginForm");
+  if (loginForm){
+    loginForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      doLogin(document.getElementById("li_email").value.trim(), document.getElementById("li_password").value);
+    });
+  }
+
+  var staffLoginForm = document.getElementById("staffLoginForm");
+  if (staffLoginForm){
+    staffLoginForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      doLogin(document.getElementById("admin_email").value.trim(), document.getElementById("admin_password").value);
+    });
+  }
+
+  var uploadForm = document.getElementById("uploadForm");
+  if (uploadForm){
+    uploadForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      var f = document.getElementById("uploadFile").files[0];
+      doUpload(f);
+    });
+  }
+
+  app.querySelectorAll("[data-open-report]").forEach(function(el){
+    el.addEventListener("click", function(){
+      openReport(el.getAttribute("data-open-report"));
+    });
+  });
+
+  var back = app.querySelector("[data-back]");
+  if (back){
+    back.addEventListener("click", function(){
+      state.activeReportId = null;
+      state.activeReport = null;
+      clearBanner();
+      loadReportsList().then(render);
+    });
+  }
+
+  var checkoutBtn = app.querySelector("[data-checkout]");
+  if (checkoutBtn){
+    checkoutBtn.addEventListener("click", function(){
+      doCheckout(checkoutBtn.getAttribute("data-checkout"));
+    });
+  }
+
+  var genBtn = app.querySelector("[data-gen-letters]");
+  if (genBtn){
+    genBtn.addEventListener("click", function(){ doGenerateLetters(genBtn.getAttribute("data-gen-letters")); });
+  }
+  var sweepBtn = app.querySelector("[data-sweep]");
+  if (sweepBtn){
+    sweepBtn.addEventListener("click", function(){ doSecondaryBureauSweep(sweepBtn.getAttribute("data-sweep")); });
+  }
+
+  app.querySelectorAll(".outcome-form").forEach(function(f){
+    f.addEventListener("submit", function(e){
+      e.preventDefault();
+      var parts = f.getAttribute("data-letter").split("|");
+      var status = f.querySelector(".outcome-status").value;
+      var notes = f.querySelector(".outcome-notes").value;
+      if (!status){ setBanner("error", "Pick an outcome first."); render(); return; }
+      doRecordOutcome(parts[0], parts[1], status, notes);
+    });
+  });
+
+  app.querySelectorAll("[data-mov]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var parts = btn.getAttribute("data-mov").split("|");
+      doEscalateMov(parts[0], parts[1]);
+    });
+  });
+
+  var idForm = document.getElementById("idTheftForm");
+  if (idForm){
+    idForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      var reportId = idForm.getAttribute("data-report");
+      var tradelineId = document.getElementById("idt_tradeline").value;
+      var num = document.getElementById("idt_number").value.trim();
+      doIdentityTheftBlock(reportId, tradelineId, num);
+    });
+  }
+
+  app.querySelectorAll("[data-open-client]").forEach(function(el){
+    el.addEventListener("click", function(){ openStaffClient(el.getAttribute("data-open-client")); });
+  });
+  var staffBack = app.querySelector("[data-staff-back]");
+  if (staffBack){
+    staffBack.addEventListener("click", function(){
+      staffSelectedClientId = null;
+      staffSelectedClientReports = null;
+      staffSelectedClientError = null;
+      render();
+    });
+  }
+
+  var chatToggle = app.querySelector("[data-chat-toggle]");
+  if (chatToggle){
+    chatToggle.addEventListener("click", toggleChat);
+  }
+  var chatClose = app.querySelector("[data-chat-close]");
+  if (chatClose){
+    chatClose.addEventListener("click", function(){ chatOpen = false; render(); });
+  }
+  var chatForm = document.getElementById("chatForm");
+  if (chatForm){
+    chatForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      var input = document.getElementById("chatInput");
+      var text = input.value;
+      input.value = "";
+      doSendChat(text);
+    });
+  }
+
+  var createOrgBtn = document.getElementById("createOrgSubmit");
+  if (createOrgBtn){
+    createOrgBtn.addEventListener("click", function(e){
+      e.preventDefault();
+      var name = document.getElementById("org_name").value.trim();
+      var slug = document.getElementById("org_slug").value.trim();
+      if (!name || !slug){ setBanner("error", "Name and slug are both required."); render(); return; }
+      doCreateOrg(name, slug);
+    });
+  }
+
+  var createStaffBtn = document.getElementById("createStaffSubmit");
+  if (createStaffBtn){
+    createStaffBtn.addEventListener("click", function(e){
+      e.preventDefault();
+      var orgSlug = document.getElementById("staff_org_slug").value.trim();
+      var email = document.getElementById("staff_email").value.trim();
+      var password = document.getElementById("staff_password").value;
+      var role = document.getElementById("staff_role").value;
+      if (!orgSlug || !email || !password){ setBanner("error", "Organization slug, email, and password are all required."); render(); return; }
+      doCreateStaff(orgSlug, email, password, role);
+    });
+  }
+
+  var createOfferBtn = document.getElementById("createOfferSubmit");
+  if (createOfferBtn){
+    createOfferBtn.addEventListener("click", function(e){
+      e.preventDefault();
+      var name = document.getElementById("offer_name").value.trim();
+      var category = document.getElementById("offer_category").value;
+      var description = document.getElementById("offer_description").value.trim();
+      var cta = document.getElementById("offer_cta").value.trim() || "Learn more";
+      var url = document.getElementById("offer_url").value.trim();
+      var disclosure = document.getElementById("offer_disclosure").value.trim();
+      if (!name || !description || !url){ setBanner("error", "Name, description, and URL are all required."); render(); return; }
+      var payload = { name: name, category: category, description: description, cta_label: cta, affiliate_url: url };
+      if (disclosure) payload.disclosure_note = disclosure;
+      doCreatePartnerOffer(payload);
+    });
+  }
+
+  app.querySelectorAll("[data-offer-toggle]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      doTogglePartnerOffer(btn.getAttribute("data-offer-toggle"), btn.getAttribute("data-offer-active") === "1");
+    });
+  });
+  app.querySelectorAll("[data-offer-delete]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      doDeletePartnerOffer(btn.getAttribute("data-offer-delete"));
+    });
+  });
+
+  app.querySelectorAll("[data-open-establish]").forEach(function(btn){
+    btn.addEventListener("click", function(){ openEstablish(state.view); });
+  });
+  var establishBack = app.querySelector("[data-establish-back]");
+  if (establishBack){
+    establishBack.addEventListener("click", function(){
+      state.view = state.establishFrom || (state.token ? "client" : "auth");
+      state.establishFrom = null;
+      clearBanner();
+      render();
+    });
+  }
+}
+
+/* ---------- boot ---------- */
+function boot(){
+  loadToken();
+  if (state.token && state.tokenPayload){
+    if (state.tokenPayload.type === "user"){
+      state.view = "admin";
+      render();
+      adminAnalyticsError = null; adminAnalytics = null;
+      loadAnalytics(function(err, stats){
+        if (err) adminAnalyticsError = err.message; else adminAnalytics = stats;
+        render();
+      });
+      return;
+    }
+    state.view = "client";
+    render();
+    loadReportsList().then(render).catch(function(e){
+      // token likely stale/expired server-side
+      logout();
+    });
+    return;
+  }
+  state.view = "auth";
+  render();
+}
+
+// Re-fetch analytics / the client list whenever we land on the admin view
+// fresh (e.g. after login), without re-fetching on every re-render.
+var _origRender = render;
+render = function(){
+  _origRender();
+  if (state.view === "admin" && !adminAnalytics && !adminAnalyticsError){
+    loadAnalytics(function(err, stats){
+      if (err) adminAnalyticsError = err.message; else adminAnalytics = stats;
+      _origRender();
+    });
+  }
+  if (state.view === "admin" && !staffClients && !staffClientsError){
+    loadStaffClients();
+  }
+  if (state.view === "admin" && !adminOffers && !adminOffersError){
+    loadAdminOffers();
+  }
+  if ((state.view === "client" || state.view === "establish") && !publicOffers && !publicOffersError){
+    loadPublicOffers();
+  }
+};
+
+boot();
+})();
+</script>
+</body>
+</html>
