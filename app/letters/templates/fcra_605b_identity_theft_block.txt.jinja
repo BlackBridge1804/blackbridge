@@ -1,0 +1,31 @@
+{{ client_name }}
+{{ client_address }}
+
+{{ today }}
+
+{{ recipient_name }}
+{{ recipient_address }}
+
+Re: Request to Block Information Resulting from Identity Theft -- FCRA Section 605B
+
+To Whom It May Concern:
+
+I am requesting that you block the following information from my consumer file because it
+resulted from identity theft, as is my right under Section 605B of the Fair Credit Reporting
+Act (15 U.S.C. Section 1681c-2).
+
+Creditor: {{ creditor_name }}
+{% if account_number_last4 %}Account ending in: {{ account_number_last4 }}{% endif %}
+
+I state that this information does not relate to any transaction that I made or authorized.
+Enclosed with this letter is:
+1. Proof of my identity.
+2. A copy of my identity theft report, reference number: {{ identity_theft_report_number }}.
+3. This statement identifying the specific information that resulted from the identity theft.
+
+Under Section 605B, you are required to block this information from appearing in my
+consumer file no later than 4 business days after receiving this request and this
+documentation. Please send written confirmation once the block is in place.
+
+Sincerely,
+{{ client_name }}
