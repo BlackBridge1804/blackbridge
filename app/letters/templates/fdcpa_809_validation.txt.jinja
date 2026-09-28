@@ -1,0 +1,29 @@
+{{ client_name }}
+{{ client_address }}
+
+{{ today }}
+
+{{ recipient_name }}
+{{ recipient_address }}
+
+Re: Debt Validation Request -- Fair Debt Collection Practices Act Section 809
+
+To Whom It May Concern:
+
+This letter is a formal request for validation of the debt referenced below, as is my right
+under Section 809 of the Fair Debt Collection Practices Act (15 U.S.C. Section 1692g).
+
+Creditor/Collector: {{ creditor_name }}
+{% if account_number_last4 %}Account ending in: {{ account_number_last4 }}{% endif %}
+{% if original_creditor_name %}Original Creditor: {{ original_creditor_name }}{% endif %}
+
+I am requesting that you provide:
+1. The amount of the debt and an accounting of how it was calculated.
+2. The name and address of the original creditor, if different from the current creditor.
+3. Verification that you are licensed to collect this debt in my state, where applicable.
+
+Until you provide this validation, please suspend all collection activity and any related
+reporting to the consumer reporting agencies, as required under Section 809(b).
+
+Sincerely,
+{{ client_name }}
