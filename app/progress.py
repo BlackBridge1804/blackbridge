@@ -22,6 +22,7 @@ _STEP_DEFS = [
     ("outcomes_tracked", "Bureau/furnisher responses recorded", "Awaiting bureau/furnisher responses"),
 ]
 
+
 def compute_report_progress(
     report,
     tradeline_count: int,
@@ -71,4 +72,7 @@ def compute_report_progress(
         "letters_with_outcome": letters_with_outcome,
         "letters_pending_outcome": letters_pending_outcome,
         "litigation_candidates": litigation_candidate_count,
+        "cfpb_complaint_filed": bool(report.cfpb_complaint_filed_at),
+        "cfpb_complaint_filed_at": report.cfpb_complaint_filed_at,
+        "cfpb_complaint_outcome": report.cfpb_complaint_outcome,
     }
