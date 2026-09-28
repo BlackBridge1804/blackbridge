@@ -1,0 +1,29 @@
+{{ client_name }}
+{{ client_address }}
+
+{{ today }}
+
+{{ recipient_name }}
+{{ recipient_address }}
+
+Re: Request for Reinvestigation of Inaccurate Information -- Fair Credit Reporting Act Section 611
+
+To Whom It May Concern:
+
+I am writing to dispute the accuracy of the following item on my consumer report, as is my
+right under Section 611 of the Fair Credit Reporting Act (15 U.S.C. Section 1681i).
+
+Creditor: {{ creditor_name }}
+{% if account_number_last4 %}Account ending in: {{ account_number_last4 }}{% endif %}
+
+Basis for this dispute: {{ finding_description }}
+
+Under FCRA Section 611, you are required to conduct a reasonable reinvestigation of this
+item within 30 days of receiving this letter, and to remove or correct any information that
+cannot be verified as accurate and complete. Please provide me with the results of your
+reinvestigation and an updated copy of my consumer report reflecting any corrections.
+
+Please direct your response to the address below.
+
+Sincerely,
+{{ client_name }}
