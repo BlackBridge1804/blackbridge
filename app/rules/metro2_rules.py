@@ -144,6 +144,93 @@ def rule_status_balance_contradiction(tradeline) -> Optional[dict]:
     return None
 
 
+_RENTAL_KEYWORDS = (
+    "apartment", "apartments", "property management", "realty", "rental",
+    "leasing", "residential", "housing authority",
+)
+
+
+def rule_collection_validation_eligible(tradeline) -> Optional[dict]:
+    """Every collection-agency tradeline is eligible for an FDCPA Section 809
+    validation request. IMPORTANT: Section 809(b)'s automatic "cease collection
+    activity" requirement only applies if the request is sent within 30 days of
+    the collector's first written notice to the consumer -- a credit report has
+    no way to know that date, so this rule (and the letter it maps to) never
+    asserts the cessation right unconditionally. The underlying right to
+    request validation itself does not expire."""
+    if tradeline.is_collection:
+        return {
+            "rule_id": "fdcpa_validation_eligible",
+            "legal_basis": "FDCPA Section 809 (15 U.S.C. Section 1692g)",
+            "severity": "medium",
+            "description": (
+                f"'{tradeline.creditor_name or 'This account'}' is being reported by a collection "
+                f"agency. You have the right to demand validation of this debt under FDCPA Section "
+                f"809 -- that right doesn't expire, though the automatic requirement that the "
+                f"collector pause collection activity while validating only applies if this is sent "
+                f"within 30 days of the collector's first written notice to you."
+            ),
+            "letter_type": "fdcpa_809",
+        }
+    return None
+
+
+def rule_repossession_accuracy(tradeline) -> Optional[dict]:
+    """Doesn't allege one specific error -- flags a repossession tradeline as
+    worth a Section 611 reinvestigation covering the fields that are commonly
+    reported incompletely or inconsistently on repos: the sale date, and the
+    post-sale deficiency-balance calculation (what's left owed after sale
+    proceeds were applied)."""
+    status = (tradeline.status_text or "").lower()
+    if "repossess" in status:
+        return {
+            "rule_id": "fcra_repossession_accuracy",
+            "legal_basis": "FCRA Section 611 (15 U.S.C. Section 1681i)",
+            "severity": "medium",
+            "description": (
+                f"'{tradeline.creditor_name or 'This account'}' is reported as repossessed. "
+                f"Repossession tradelines are commonly reported with an inaccurate or missing sale "
+                f"date, or an unverifiable deficiency balance (the amount still owed after sale "
+                f"proceeds were applied) -- both of which the furnisher must be able to verify under "
+                f"FCRA Section 611."
+            ),
+            "letter_type": "fcra_611",
+        }
+    return None
+
+
+def rule_possible_rental_collection(tradeline) -> Optional[dict]:
+    """Heuristic only, matched on creditor-name keywords -- can both miss real
+    rental collections (a debt buyer with a generic name) and occasionally
+    false-positive. Evictions themselves generally do NOT appear on the big
+    three credit reports; they live on separate tenant-screening consumer
+    reports (e.g. LexisNexis RentBureau, SafeRent), a different kind of CRA
+    entirely. What sometimes does appear here is an unpaid-rent balance sent
+    to collections -- that's what this rule looks for, and the letter it maps
+    to is worded as an ordinary furnisher-accuracy dispute, never an assertion
+    that the account is definitely eviction-related."""
+    if not tradeline.is_collection:
+        return None
+    haystack = " ".join(filter(None, [tradeline.creditor_name, tradeline.original_creditor_name])).lower()
+    if any(keyword in haystack for keyword in _RENTAL_KEYWORDS):
+        return {
+            "rule_id": "fcra_rental_collection_furnisher_accuracy",
+            "legal_basis": "FCRA Section 623 (15 U.S.C. Section 1681s-2)",
+            "severity": "medium",
+            "description": (
+                f"'{tradeline.creditor_name or 'This collection account'}' looks like it may be a "
+                f"rental/property-management-related collection (possibly tied to unpaid rent or an "
+                f"eviction judgment), based on the creditor name alone -- verify that before relying "
+                f"on it. If it is rental-related, the furnisher still has the same Section 623 duty "
+                f"to report accurate, verifiable information as any other furnisher. Note: an "
+                f"eviction itself typically won't appear on this report -- it lives on a separate "
+                f"tenant-screening consumer report, not Equifax/Experian/TransUnion."
+            ),
+            "letter_type": "fcra_623_direct",
+        }
+    return None
+
+
 # Per-tradeline rules, run against every tradeline individually.
 TRADELINE_RULES = [
     rule_missing_dofd_on_delinquent_account,
@@ -151,6 +238,9 @@ TRADELINE_RULES = [
     rule_balance_exceeds_credit_limit,
     rule_obsolete_negative_item,
     rule_status_balance_contradiction,
+    rule_collection_validation_eligible,
+    rule_repossession_accuracy,
+    rule_possible_rental_collection,
 ]
 
 
