@@ -145,6 +145,49 @@ class IdentityTheftBlockIn(BaseModel):
     identity_theft_report_number: str  # from the consumer's FTC IdentityTheft.gov report
 
 
+class LatePaymentDisputeIn(BaseModel):
+    """Client-attested: a credit report alone can't reveal when a statement was
+    mailed or when a payment was actually received, so this is the client's
+    own account -- same pattern as the identity-theft block above. Only fits
+    TILA 1666b's narrow theory (statement-timing / payment-crediting fault),
+    not a general 'remove all late payments' claim."""
+
+    payment_date: str  # YYYY-MM-DD -- the date the client believes the payment was made/received
+    dispute_notes: Optional[str] = None
+
+
+class ChargeOffEvidenceIn(BaseModel):
+    """Client-attested: whether they've obtained a Form 1099-C for this debt
+    (directly, or via their own IRS Form 4506-T request). Used only as
+    supporting evidence inside a normal FCRA Section 611/623 accuracy dispute
+    -- NOT treated as a standalone legal theory. The claim that a 1099-C
+    automatically forces deletion or extinguishes a debt is legally disputed;
+    this platform doesn't assert it as settled law. See
+    fcra_charge_off_1099c_dispute.txt.jinja for exactly how it's worded."""
+
+    tax_year: str
+    cancelled_amount_cents: Optional[int] = None
+    notes: Optional[str] = None
+
+
+class CFPBComplaintIn(BaseModel):
+    """Recorded by the client after THEY manually create their own account and
+    submit a complaint at consumerfinance.gov/complaint -- this platform never
+    creates that account or submits anything on the client's behalf."""
+
+    outcome: Optional[str] = None  # "in_progress" | "resolved" | "no_response"
+    notes: Optional[str] = None
+
+
+class CFPBPacketOut(BaseModel):
+    """A pre-filled plain-text summary of this report's findings, legal
+    citations, and any letters already sent -- for the client to copy into
+    their own CFPB complaint form. Assembled entirely from data already
+    computed elsewhere in this app; nothing new is invented here."""
+
+    packet_text: str
+
+
 class LitigationCandidateOut(BaseModel):
     violation_id: str
     rule_id: str
@@ -178,6 +221,9 @@ class ReportProgressOut(BaseModel):
     letters_with_outcome: int
     letters_pending_outcome: int
     litigation_candidates: Optional[int] = None
+    cfpb_complaint_filed: bool = False
+    cfpb_complaint_filed_at: Optional[datetime] = None
+    cfpb_complaint_outcome: Optional[str] = None
 
 
 class StaffClientOut(BaseModel):
