@@ -1,0 +1,35 @@
+{{ client_name }}
+{{ client_address }}
+
+{{ today }}
+
+{{ recipient_name }}
+{{ recipient_address }}
+
+Re: Dispute of Late Payment Reporting -- Truth in Lending Act, 15 U.S.C. Section 1666b
+
+To Whom It May Concern:
+
+I am writing to dispute a late-payment mark you are reporting on the account referenced below.
+
+Creditor: {{ creditor_name }}
+{% if account_number_last4 %}Account ending in: {{ account_number_last4 }}{% endif %}
+{% if payment_date %}Payment date in question: {{ payment_date }}{% endif %}
+
+Basis for this dispute: {{ finding_description }}
+
+Under 15 U.S.C. Section 1666b, a creditor may treat a payment as late only if the periodic
+statement showing that payment's due date was mailed or delivered to me at least 21 days before
+the due date, and payments must be credited as of the date of receipt. If this is an open-end
+(revolving) account and either of those requirements was not met for the payment above, the
+late mark tied to it is not accurately reported.
+
+Please investigate the statement-mailing date and payment-crediting record for the payment
+referenced above, and correct or remove the late-payment mark if it cannot be verified as
+compliant with Section 1666b. This is a narrow, fact-specific dispute about this one payment --
+not a request to remove the account or any of its other payment history.
+
+Please provide me with the results of your investigation.
+
+Sincerely,
+{{ client_name }}
