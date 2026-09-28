@@ -1,0 +1,28 @@
+{{ client_name }}
+{{ client_address }}
+
+{{ today }}
+
+{{ recipient_name }}
+{{ recipient_address }}
+
+Re: Direct Dispute of Furnished Information -- Fair Credit Reporting Act Section 623
+
+To Whom It May Concern:
+
+I am writing directly to you, as the furnisher of this information, to dispute the accuracy
+of an account you are reporting to the consumer reporting agencies, as permitted under
+Section 623 of the Fair Credit Reporting Act (15 U.S.C. Section 1681s-2).
+
+Creditor: {{ creditor_name }}
+{% if account_number_last4 %}Account ending in: {{ account_number_last4 }}{% endif %}
+
+Basis for this dispute: {{ finding_description }}
+
+As a furnisher, you have a duty under Section 623 to investigate this dispute and to notify
+each consumer reporting agency to which you furnished the inaccurate information of the
+results, correcting or deleting the information as appropriate. Please provide written
+confirmation of the outcome of your investigation.
+
+Sincerely,
+{{ client_name }}
