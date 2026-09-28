@@ -1,0 +1,35 @@
+{{ client_name }}
+{{ client_address }}
+
+{{ today }}
+
+{{ recipient_name }}
+{{ recipient_address }}
+
+Re: Request for Method of Verification -- Fair Credit Reporting Act Section 611(a)(7)
+
+To Whom It May Concern:
+
+On or around {{ original_dispute_date }}, I disputed the following item on my consumer
+report, and your investigation resulted in the item being reported back to me as
+"verified." I am now requesting a description of the procedure used to determine the
+accuracy of this information, as is my right under Section 611(a)(7) of the Fair Credit
+Reporting Act (15 U.S.C. Section 1681i(a)(7)).
+
+Creditor: {{ creditor_name }}
+{% if account_number_last4 %}Account ending in: {{ account_number_last4 }}{% endif %}
+
+Original basis for dispute: {{ finding_description }}
+
+Please provide:
+1. The name, address, and telephone number of the furnisher of the information contacted as
+   part of your reinvestigation.
+2. A description of the business record(s) reviewed to verify this information.
+3. The method used to verify the accuracy of the information.
+
+If you cannot provide a substantive description of the actual verification procedure used,
+the item should be deleted or corrected, as an item that was not genuinely reinvestigated
+cannot lawfully continue to be reported as verified.
+
+Sincerely,
+{{ client_name }}
