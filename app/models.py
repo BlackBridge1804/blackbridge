@@ -113,6 +113,14 @@ class Report(Base):
     is_paid = Column(Boolean, default=False)  # unlocks full letters for this report
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    # CFPB complaint tracking -- recorded by the CLIENT after THEY manually
+    # create their own account and submit a complaint at
+    # consumerfinance.gov/complaint. This platform never creates that account
+    # or submits anything automatically; see app/routers/reports.py.
+    cfpb_complaint_filed_at = Column(DateTime, nullable=True)
+    cfpb_complaint_outcome = Column(String, nullable=True)  # "in_progress" | "resolved" | "no_response"
+    cfpb_complaint_notes = Column(Text, nullable=True)
+
     client = relationship("Client", back_populates="reports")
     tradelines = relationship("Tradeline", back_populates="report")
 
