@@ -1,0 +1,36 @@
+# Render "Blueprint" deploy spec. In the Render dashboard: New -> Blueprint,
+# point it at this GitHub repo, and Render will read this file to create the
+# web service below. Anything marked `sync: false` is a secret Render will
+# prompt you to type into its dashboard (never committed here) -- see
+# DEPLOYMENT.md for exactly which value goes in each one and where to get it.
+services:
+  - type: web
+    name: blackbridge-credit-repair
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: "60"
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: STRIPE_PRICE_ID_PER_REPORT
+        sync: false
+      - key: PLATFORM_ADMIN_EMAIL
+        sync: false
+      - key: PLATFORM_ADMIN_PASSWORD
+        sync: false
+      - key: PYTHON_VERSION
+        value: 3.11.9
