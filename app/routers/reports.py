@@ -71,7 +71,7 @@ async def upload_report(
     else:
         raw_text = raw_bytes.decode("utf-8", errors="ignore")
         source_format = "text" if is_demo_text else "other"
-
+    raw_text = raw_text.replace("\x00", "")
     report = models.Report(
         organization_id=client.organization_id,
         client_id=client.id,
