@@ -142,11 +142,11 @@ def extract_with_llm(raw_text: str, anthropic_api_key: str, model: str = "claude
     client = Anthropic(api_key=anthropic_api_key)
     response = client.messages.create(
         model=model,
-        max_tokens=4096,
+        max_tokens=8192,
         system=_LLM_EXTRACTION_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": raw_text}],
     )
-    raw_output = "".join(block.text for block in response.content if hasattr(block, "text")).strip()
+    raw_output = "".join(block.text for block in response.content if getattr(block, "type", None) == "text" and block.text).strip()
 
     # Models occasionally wrap JSON in a code fence despite instructions not to.
     if raw_output.startswith("```"):
