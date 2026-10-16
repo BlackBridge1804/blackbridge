@@ -44,11 +44,13 @@ def rule_missing_dofd_on_delinquent_account(tradeline) -> Optional[dict]:
         return {
             "rule_id": "metro2_missing_dofd",
             "legal_basis": "Metro 2 field specification; FCRA 623(a)(5) furnisher duty on delinquency dates",
-            "severity": "high",
+            "severity": "medium",
             "description": (
                 f"Tradeline for {tradeline.creditor_name or 'this creditor'} is reported as "
-                f"derogatory (collection/charge-off) but has no Date of First Delinquency on file. "
-                f"DOFD is required to verify the account is within the reporting window."
+                f"derogatory (collection/charge-off), but no Date of First Delinquency was found "
+                f"in the report data we read. Some bureaus, including Experian, don't print this "
+                f"date as its own field, so this may be a report-format gap rather than a real "
+                f"error. Check the account's 'On Record Until' date and payment history before disputing."
             ),
             "letter_type": "fcra_623_direct",
         }
