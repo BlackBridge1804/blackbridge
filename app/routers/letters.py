@@ -77,6 +77,11 @@ def generate_letters(
         )
         if already_has_letter:
             continue
+            
+        # The missing-DOFD finding is advisory (some bureaus, e.g. Experian, never
+        # print this date), so don't auto-generate a dispute letter for it.
+        if violation.rule_id == "metro2_missing_dofd":
+            continue
 
         tradeline = violation.tradeline
         recipient_name, recipient_note = _BUREAU_RECIPIENTS.get(
