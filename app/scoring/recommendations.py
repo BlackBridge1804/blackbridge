@@ -33,7 +33,11 @@ def build_recommendations(tradelines: list, violation_dicts: list[dict]) -> list
                 "factor": factor.value,
                 "factor_label": FACTOR_LABELS[factor],
                 "impact_tier": impact_tier_for_factor(factor, v.get("severity", "medium")),
-                "title": f"Dispute: {v['rule_id'].replace('_', ' ')}",
+                "title": (
+                    f"Verify first: {v['rule_id'].replace('_', ' ')}"
+                    if v["rule_id"] == "metro2_missing_dofd"
+                    else f"Dispute: {v['rule_id'].replace('_', ' ')}"
+                ),               
                 "description": v["description"],
                 "legal_basis": v["legal_basis"],
             }
