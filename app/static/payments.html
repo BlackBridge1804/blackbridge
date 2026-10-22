@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>BlackBridge | Payments</title>
+<style>
+  :root{--bg:#f5f7fb;--card:#fff;--line:#e2e6ef;--text:#1a1f2b;--dim:#5b6272;--brand:#2f6fed;--ok:#1a8a5f;--okbg:#e6f6ef;--warn:#b5790a;--warnbg:#fbf1de;--bad:#c23b3b;--badbg:#fbeaea;}
+  @media (prefers-color-scheme:dark){:root{--bg:#0f1320;--card:#171c2b;--line:#2a3145;--text:#eef1f8;--dim:#9aa3b8;--brand:#5c8dff;--okbg:#123526;--warnbg:#3a2c10;--badbg:#3a1c1c;--ok:#3ecf8e;--warn:#e0a83a;--bad:#f27272;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;}
+  .wrap{max-width:760px;margin:0 auto;padding:20px 16px 60px;}
+  h1{font-size:24px;margin:8px 0 4px} p{color:var(--dim);margin:0 0 14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:14px;}
+  label{display:block;font-size:13px;font-weight:600;margin:10px 0 4px}
+  input,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;font-size:16px;background:var(--bg);color:var(--text);}
+  button{font-size:15px;font-weight:700;border:0;border-radius:10px;padding:11px 16px;cursor:pointer;background:var(--brand);color:#fff;}
+  button.ghost{background:transparent;color:var(--brand);border:1px solid var(--line);}
+  button.undo{background:transparent;color:var(--dim);border:1px solid var(--line);}
+  button:disabled{opacity:.5;cursor:default}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+  .client{padding:12px 0;border-top:1px solid var(--line);}
+  .client:first-child{border-top:0}
+  .badge{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;}
+  .paid{background:var(--okbg);color:var(--ok)} .unpaid{background:var(--warnbg);color:var(--warn)}
+  .msg{padding:12px 14px;border-radius:10px;margin-bottom:14px;font-size:14px;}
+  .msg.ok{background:var(--okbg);color:var(--ok)} .msg.err{background:var(--badbg);color:var(--bad)}
+  .muted{color:var(--dim);font-size:13px}
+  .rep{border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px;}
+  .hide{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row"><h1>Payments</h1><button class="ghost hide" id="logout">Log out</button></div>
+  <p>Staff only. Mark a client's report as paid after their payment arrives, and it unlocks right away.</p>
+  <div id="msg"></div>
+
+  <div class="card" id="loginCard">
+    <form id="loginForm">
+      <label for="email">Staff email</label>
+      <input id="email" type="email" autocomplete="username" required>
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" required>
+      <div style="margin-top:14px"><button type="submit" id="loginBtn">Log in</button></div>
+    </form>
+  </div>
+
+  <div class="hide" id="main">
+    <div class="card hide" id="orgCard">
+      <label for="orgSel">Organization</label>
+      <select id="orgSel"></select>
+    </div>
+    <div class="card" id="clientsCard"></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var token = null, orgId = null, clients = [], openId = null, reports = {};
+  var $ = function(id){ return document.getElementById(id); };
+
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function say(kind, text){ $("msg").innerHTML = text ? '<div class="msg ' + kind + '">' + esc(text) + '</div>' : ""; }
+
+  function api(path, opts){
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    if (token) opts.headers["Authorization"] = "Bearer " + token;
+    return fetch(path, opts).then(function(res){
+      return res.json().catch(function(){ return null; }).then(function(body){
+        if (!res.ok){
+          var m = body && body.detail ? (typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)) : res.statusText;
+          var e = new Error(m); e.status = res.status; throw e;
+        }
+        return body;
+      });
+    });
+  }
+  function q(){ return orgId ? "?org_id=" + encodeURIComponent(orgId) : ""; }
+
+  function login(email, pw){
+    var body = new URLSearchParams(); body.set("username", email); body.set("password", pw);
+    return fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body })
+      .then(function(r){ return r.json().then(function(b){ if (!r.ok) throw new Error(b && b.detail ? b.detail : "Login failed"); return b; }); });
+  }
+
+  function loadClients(){
+    $("clientsCard").innerHTML = '<p class="muted">Loading clients… (the first load can take up to a minute)</p>';
+    return api("/staff/clients" + q()).then(function(list){
+      clients = list; renderClients();
+    }).catch(function(e){
+      if (e.status === 400 && !orgId){
+        // platform admin: pick an organization first
+        return api("/organizations").then(function(orgs){
+          var sel = $("orgSel");
+          sel.innerHTML = orgs.map(function(o){ return '<option value="' + esc(o.id) + '">' + esc(o.name) + ' (' + esc(o.slug) + ')</option>'; }).join("");
+          $("orgCard").classList.remove("hide");
+          orgId = sel.value;
+          return loadClients();
+        });
+      }
+      $("clientsCard").innerHTML = "";
+      say("err", e.message);
+    });
+  }
+
+  function renderClients(){
+    var h = "<h2 style='margin:0 0 6px;font-size:18px'>Clients</h2>";
+    if (!clients.length) h += '<p class="muted">No clients have signed up yet.</p>';
+    clients.forEach(function(c){
+      h += '<div class="client"><div class="row"><div><strong>' + esc(c.full_name || c.email) + '</strong>' +
+        '<div class="muted">' + esc(c.email) + " · " + c.report_count + ' report(s)</div></div>' +
+        (c.report_count ? '<button class="ghost" data-open="' + esc(c.id) + '">' + (openId === c.id ? "Hide" : "Reports") + '</button>' : "") +
+        '</div>';
+      if (openId === c.id){
+        var rs = reports[c.id];
+        if (!rs) h += '<p class="muted">Loading…</p>';
+        else rs.forEach(function(r){
+          h += '<div class="rep"><div class="row"><div><strong>Report ' + esc(r.report_id.slice(0,8)) + '…</strong>' +
+            '<div class="muted">' + r.tradeline_count + " accounts · " + r.violation_count + ' findings</div></div>' +
+            '<span class="badge ' + (r.is_paid ? "paid" : "unpaid") + '">' + (r.is_paid ? "Paid / Unlocked" : "Not paid") + '</span></div>' +
+            '<div style="margin-top:10px">' +
+            (r.is_paid
+              ? '<button class="undo" data-paid="0" data-rid="' + esc(r.report_id) + '">Undo: mark as unpaid</button>'
+              : '<button data-paid="1" data-rid="' + esc(r.report_id) + '">Mark as paid</button>') +
+            '</div></div>';
+        });
+      }
+      h += "</div>";
+    });
+    $("clientsCard").innerHTML = h;
+  }
+
+  function loadReports(cid){
+    return api("/staff/clients/" + encodeURIComponent(cid) + "/reports").then(function(rs){ reports[cid] = rs; renderClients(); })
+      .catch(function(e){ say("err", e.message); });
+  }
+
+  $("clientsCard").addEventListener("click", function(ev){
+    var t = ev.target;
+    if (t.getAttribute("data-open")){
+      var cid = t.getAttribute("data-open");
+      openId = (openId === cid) ? null : cid;
+      renderClients();
+      if (openId) loadReports(openId);
+    } else if (t.getAttribute("data-rid")){
+      var paid = t.getAttribute("data-paid") === "1";
+      t.disabled = true; say("", "");
+      api("/staff/reports/" + encodeURIComponent(t.getAttribute("data-rid")) + (paid ? "/mark-paid" : "/mark-unpaid"), { method: "POST" })
+        .then(function(){ say("ok", paid ? "Marked as paid. The client can now see the full breakdown." : "Marked as unpaid."); return loadReports(openId); })
+        .catch(function(e){ say("err", e.message); t.disabled = false; });
+    }
+  });
+
+  $("orgSel").addEventListener("change", function(){ orgId = $("orgSel").value; reports = {}; openId = null; loadClients(); });
+
+  $("loginForm").addEventListener("submit", function(ev){
+    ev.preventDefault(); say("", "");
+    $("loginBtn").disabled = true; $("loginBtn").textContent = "Logging in…";
+    login($("email").value.trim(), $("pw").value).then(function(b){
+      token = b.access_token;
+      $("pw").value = "";
+      $("loginCard").classList.add("hide"); $("main").classList.remove("hide"); $("logout").classList.remove("hide");
+      return loadClients();
+    }).catch(function(e){ say("err", e.message); }).then(function(){ $("loginBtn").disabled = false; $("loginBtn").textContent = "Log in"; });
+  });
+
+  $("logout").addEventListener("click", function(){
+    token = null; orgId = null; clients = []; reports = {}; openId = null;
+    $("main").classList.add("hide"); $("orgCard").classList.add("hide"); $("logout").classList.add("hide"); $("loginCard").classList.remove("hide");
+    say("", "");
+  });
+})();
+</script>
+</body>
+</html>
