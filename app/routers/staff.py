@@ -86,3 +86,40 @@ def list_client_reports(
         .all()
     )
     return [load_progress_for_report(db, r) for r in reports]
+
+
+def _get_report_for_staff(db: Session, report_id: str, principal: models.User) -> models.Report:
+    report = db.query(models.Report).filter(models.Report.id == report_id).first()
+    if not report:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Report not found")
+    if principal.role != UserRole.platform_admin and report.organization_id != principal.organization_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cross-tenant access denied")
+    return report
+
+
+@router.post("/reports/{report_id}/mark-paid")
+def mark_report_paid(
+    report_id: str,
+    db: Session = Depends(get_db),
+    principal: models.User = Depends(require_org_staff),
+):
+    """Manual unlock for clients who pay outside the app (Zelle, cash, etc.).
+    Stays under the operator's control; processor payments unlock automatically
+    through the billing webhook instead."""
+    report = _get_report_for_staff(db, report_id, principal)
+    report.is_paid = True
+    db.commit()
+    return {"report_id": report.id, "is_paid": True}
+
+
+@router.post("/reports/{report_id}/mark-unpaid")
+def mark_report_unpaid(
+    report_id: str,
+    db: Session = Depends(get_db),
+    principal: models.User = Depends(require_org_staff),
+):
+    """Undo a mark-paid done by mistake."""
+    report = _get_report_for_staff(db, report_id, principal)
+    report.is_paid = False
+    db.commit()
+    return {"report_id": report.id, "is_paid": False}
