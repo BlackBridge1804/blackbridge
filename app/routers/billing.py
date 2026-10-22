@@ -34,6 +34,15 @@ def create_checkout(
     if report.client_id != client.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your report")
 
+    if not settings.stripe_secret_key and not settings.allow_dev_unlock:
+        # No processor connected: payment is handled manually and the operator
+        # unlocks the report with the "Mark as paid" button in the staff console.
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            "Your full breakdown unlocks as soon as your payment is confirmed. "
+            "Please complete payment with your provider and they will unlock it for you.",
+        )
+
     if not settings.stripe_secret_key:
         # Dev mode: no Stripe key configured, so unlock immediately so the rest
         # of the pipeline (letter generation) can be exercised end to end.
