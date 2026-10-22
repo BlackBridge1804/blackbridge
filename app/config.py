@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str = ""
     stripe_price_id_per_report: str = ""
 
+    # Testing only: lets a client unlock their own report for free when no payment
+    # processor is configured. Keep False on the live site.
+    allow_dev_unlock: bool = False
+
     platform_admin_email: str = "you@example.com"
     platform_admin_password: str = "change-me"
 
