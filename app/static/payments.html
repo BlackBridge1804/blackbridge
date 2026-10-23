@@ -58,7 +58,7 @@
 
 <script>
 (function(){
-  var token = null, orgId = null, clients = [], openId = null, reports = {};
+  var token = null, orgId = null, clients = [], openId = null, reports = {}, profiles = {};
   var $ = function(id){ return document.getElementById(id); };
 
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
@@ -116,6 +116,17 @@
         '</div>';
       if (openId === c.id){
         var rs = reports[c.id];
+        var pr = profiles[c.id];
+        if (pr){
+          h += '<div class="rep"><div class="row"><div><strong>Service</strong>' +
+            '<div class="muted">' + (pr.has_address ? esc(pr.address_line1) + (pr.address_line2 ? ", " + esc(pr.address_line2) : "") + ", " + esc(pr.city) + ", " + esc(pr.state) + " " + esc(pr.zip_code) : "No mailing address on file yet") + (pr.phone ? " · " + esc(pr.phone) : "") + '</div></div>' +
+            '<select data-svc="' + esc(c.id) + '" style="width:auto">' +
+              '<option value="diy"' + (pr.service_type === "diy" ? " selected" : "") + '>Do it yourself</option>' +
+              '<option value="done_for_you"' + (pr.service_type === "done_for_you" ? " selected" : "") + '>Done for you</option>' +
+            '</select></div>' +
+            (pr.service_type === "done_for_you" ? '<p class="muted" style="margin:8px 0 0">Done-for-you clients need your signed contract, the required consumer rights notice, and their written authorization on file before you file anything for them. Confirm these with your attorney.</p>' : "") +
+            '</div>';
+        }
         if (!rs) h += '<p class="muted">Loading…</p>';
         else rs.forEach(function(r){
           h += '<div class="rep"><div class="row"><div><strong>Report ' + esc(r.report_id.slice(0,8)) + '…</strong>' +
@@ -134,6 +145,7 @@
   }
 
   function loadReports(cid){
+    api("/staff/clients/" + encodeURIComponent(cid) + "/profile").then(function(p){ profiles[cid] = p; renderClients(); }).catch(function(){});
     return api("/staff/clients/" + encodeURIComponent(cid) + "/reports").then(function(rs){ reports[cid] = rs; renderClients(); })
       .catch(function(e){ say("err", e.message); });
   }
@@ -154,7 +166,15 @@
     }
   });
 
-  $("orgSel").addEventListener("change", function(){ orgId = $("orgSel").value; reports = {}; openId = null; loadClients(); });
+  $("clientsCard").addEventListener("change", function(ev){
+    var t = ev.target, cid = t.getAttribute && t.getAttribute("data-svc");
+    if (!cid) return;
+    api("/staff/clients/" + encodeURIComponent(cid) + "/service-type", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ service_type: t.value }) })
+      .then(function(p){ profiles[cid] = p; say("ok", "Service type saved."); renderClients(); })
+      .catch(function(e){ say("err", e.message); });
+  });
+
+  $("orgSel").addEventListener("change", function(){ orgId = $("orgSel").value; reports = {}; profiles = {}; openId = null; loadClients(); });
 
   $("loginForm").addEventListener("submit", function(ev){
     ev.preventDefault(); say("", "");
@@ -168,7 +188,7 @@
   });
 
   $("logout").addEventListener("click", function(){
-    token = null; orgId = null; clients = []; reports = {}; openId = null;
+    token = null; orgId = null; clients = []; reports = {}; profiles = {}; openId = null;
     $("main").classList.add("hide"); $("orgCard").classList.add("hide"); $("logout").classList.add("hide"); $("loginCard").classList.remove("hide");
     say("", "");
   });

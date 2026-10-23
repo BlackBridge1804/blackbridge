@@ -229,6 +229,7 @@ var state = {
   getReportFrom: null,  // which view to return to when leaving the "get your report" walkthrough
   orgSlug: "",
   reports: [],
+  profile: null,        // { address..., service_type, has_address }
   activeReportId: null,
   activeReport: null,   // full detail bundle for the open report
   banner: null,         // { kind, text }
@@ -357,6 +358,7 @@ function logout(){
   saveToken(null);
   state.view = "auth";
   state.reports = [];
+  state.profile = null;
   state.activeReportId = null;
   state.activeReport = null;
   adminAnalytics = null; adminAnalyticsError = null;
@@ -371,10 +373,19 @@ function logout(){
 }
 
 /* ---------- data loaders ---------- */
-function loadReportsList(){
-  return api("/reports").then(function(list){
-    state.reports = list;
+function loadProfile(){
+  return api("/staff/profile/me").then(function(p){
+    state.profile = p;
+  }).catch(function(){
+    // not fatal -- the address card just stays in its empty state
   });
+}
+
+function loadReportsList(){
+  return Promise.all([
+    api("/reports").then(function(list){ state.reports = list; }),
+    loadProfile()
+  ]);
 }
 
 function loadReportDetail(reportId){
@@ -453,6 +464,22 @@ function doLogin(email, password){
       setBusy(false);
       render();
     });
+  }).catch(function(e){
+    setBusy(false);
+    setBanner("error", e.message);
+  });
+}
+
+function doSaveProfile(payload){
+  clearBanner(); setBusy(true);
+  api("/staff/profile/me", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then(function(p){
+    state.profile = p;
+    setBusy(false);
+    setBanner("ok", "Mailing address saved. It will appear at the top of your letters.");
   }).catch(function(e){
     setBusy(false);
     setBanner("error", e.message);
@@ -990,6 +1017,7 @@ function renderClientDashboard(){
   }
 
   return '' +
+  renderProfileCard() +
   '<div class="card">' +
     '<h2>Upload a credit report</h2>' +
     '<p>Accepts the demo <code>.txt</code> sample, a real PDF export, or basically any other file -- we’ll read it and pull out every account.</p>' +
@@ -1009,6 +1037,34 @@ function renderClientDashboard(){
     '<button type="button" class="secondary block" data-open-establish="1">See how to establish credit from scratch</button>' +
   '</div>' +
   renderPartnerOffersSection();
+}
+
+function renderProfileCard(){
+  var p = state.profile || {};
+  var has = !!p.has_address;
+  function v(k){ return esc(p[k] || ""); }
+  return '' +
+  '<div class="card">' +
+    '<div class="row-wrap" style="justify-content:space-between;">' +
+      '<h2 style="margin:0;">Mailing address</h2>' +
+      (has ? '<span class="badge paid">Saved</span>' : '<span class="badge unpaid">Needed for your letters</span>') +
+    '</div>' +
+    '<p class="muted" style="margin-top:6px;">This is the return address at the top of your dispute letters. Add it before you generate letters.</p>' +
+    '<details' + (has ? '' : ' open') + '>' +
+      '<summary class="muted">' + (has ? 'View or edit my address' : 'Add my address') + '</summary>' +
+      '<form id="profileForm" class="stack" style="margin-top:10px;">' +
+        '<div class="field"><label>Street address</label><input type="text" id="pf_line1" maxlength="120" required value="' + v("address_line1") + '"></div>' +
+        '<div class="field"><label>Apt / unit (optional)</label><input type="text" id="pf_line2" maxlength="120" value="' + v("address_line2") + '"></div>' +
+        '<div class="field"><label>City</label><input type="text" id="pf_city" maxlength="80" required value="' + v("city") + '"></div>' +
+        '<div class="grid-2">' +
+          '<div class="field"><label>State</label><input type="text" id="pf_state" maxlength="40" required value="' + v("state") + '"></div>' +
+          '<div class="field"><label>ZIP code</label><input type="text" id="pf_zip" maxlength="15" required value="' + v("zip_code") + '"></div>' +
+        '</div>' +
+        '<div class="field"><label>Phone (optional)</label><input type="text" inputmode="tel" id="pf_phone" maxlength="30" value="' + v("phone") + '"></div>' +
+        '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>Save address</button>' +
+      '</form>' +
+    '</details>' +
+  '</div>';
 }
 
 /* ---------- render: establish-credit-from-scratch walkthrough ---------- */
@@ -1247,7 +1303,28 @@ function renderLettersSection(b, reportId){
     }).join("");
   }
 
-  return '<div class="card"><h2>Dispute letters</h2>' + actions + '<div style="margin-top:14px;">' + list + '</div></div>';
+  var noAddress = !(state.profile && state.profile.has_address);
+  var addressWarn = noAddress
+    ? '<div class="banner error" style="margin:0 0 12px;">Add your mailing address before generating letters: click “← Back to reports” and fill in the Mailing address card.</div>'
+    : "";
+
+  var guide = '' +
+  '<details style="margin-bottom:14px;">' +
+    '<summary><strong>Before you send: what to have ready</strong></summary>' +
+    '<div style="margin-top:8px;">' +
+      '<p class="muted"><strong>Keep these handy</strong> in case the bureau asks for them:</p>' +
+      '<ul class="muted" style="margin:0 0 10px 18px;padding:0;">' +
+        '<li>A copy of your government-issued ID (driver’s license or state ID)</li>' +
+        '<li>A copy of a recent utility, bank, or insurance statement showing your current address</li>' +
+        '<li>The page of your credit report showing the item, with the item circled</li>' +
+        '<li>Proof for the item if you have it, like a bank statement showing an on-time payment</li>' +
+      '</ul>' +
+      '<p class="muted"><strong>If you mail it:</strong> send copies only and keep your originals. Cover everything except the last four digits of any Social Security number you attach. Use certified mail with a return receipt so you have proof of delivery. Each letter lists what to enclose at the bottom.</p>' +
+      '<p class="muted" style="margin-bottom:0;"><strong>If you dispute online instead:</strong> use the bureau’s own dispute site. Sign in to your account there, then copy the facts from the letter (the account and why it is wrong) into their form. Leave out the “Enclosures” list at the bottom. Upload proof only if the site asks for it.</p>' +
+    '</div>' +
+  '</details>';
+
+  return '<div class="card"><h2>Dispute letters</h2>' + addressWarn + guide + actions + '<div style="margin-top:14px;">' + list + '</div></div>';
 }
 
 function renderLetterCard(l, reportId){
@@ -1679,6 +1756,20 @@ function bindEvents(){
   app.querySelectorAll("[data-open-client]").forEach(function(el){
     el.addEventListener("click", function(){ openStaffClient(el.getAttribute("data-open-client")); });
   });
+  var profileForm = document.getElementById("profileForm");
+  if (profileForm){
+    profileForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      doSaveProfile({
+        address_line1: document.getElementById("pf_line1").value.trim(),
+        address_line2: document.getElementById("pf_line2").value.trim() || null,
+        city: document.getElementById("pf_city").value.trim(),
+        state: document.getElementById("pf_state").value.trim(),
+        zip_code: document.getElementById("pf_zip").value.trim(),
+        phone: document.getElementById("pf_phone").value.trim() || null
+      });
+    });
+  }
   var staffBack = app.querySelector("[data-staff-back]");
   if (staffBack){
     staffBack.addEventListener("click", function(){
