@@ -7,10 +7,45 @@ from .. import models, schemas
 from ..database import get_db
 from ..deps import assert_same_org, require_client
 from ..escalation import is_litigation_candidate
-from ..letters.generator import render_letter
+from ..letters.generator import render_letter as _render_letter
+from .profile import require_mailing_address
 from ..secondary_bureaus import SECONDARY_BUREAUS
 
 router = APIRouter(prefix="/reports/{report_id}/letters", tags=["letters"])
+
+
+# Letters that go to a credit bureau: bureaus ask for a copy of ID and proof of
+# address on mailed disputes. Letters to a creditor/collector only need the
+# report page -- never send ID to a collector. The identity-theft block letter
+# has its own enclosure list in its template, so it is left alone.
+_BUREAU_LETTER_TYPES = {"fcra_611", "fcra_609", "secondary_bureau", "fcra_mov", "fcra_charge_off_1099c"}
+_FURNISHER_LETTER_TYPES = {"fcra_623_direct", "fdcpa_809", "tila_1666b"}
+
+
+def _enclosure_block(letter_type: str) -> str:
+    if letter_type in _BUREAU_LETTER_TYPES:
+        return (
+            "Enclosures (copies only -- I am keeping my originals):\n"
+            "- Copy of my government-issued photo ID\n"
+            "- Copy of proof of my current address (utility, bank, or insurance statement)\n"
+            "- Copy of the credit report page showing the item(s) above, with the item marked\n"
+            "- Any supporting documents I have for this dispute"
+        )
+    if letter_type in _FURNISHER_LETTER_TYPES:
+        return (
+            "Enclosures (copies only -- I am keeping my originals):\n"
+            "- Copy of the credit report page showing the item above, with the item marked\n"
+            "- Any supporting documents I have for this dispute"
+        )
+    return ""
+
+
+def render_letter(**kwargs) -> str:
+    """Same as the generator's render_letter, plus the enclosure list that
+    matches who the letter is going to."""
+    body = _render_letter(**kwargs)
+    block = _enclosure_block(kwargs.get("letter_type", ""))
+    return body.rstrip() + ("\n\n" + block + "\n" if block else "\n")
 
 _BUREAU_RECIPIENTS = {
     "fcra_611": ("Equifax / Experian / TransUnion", "confirm current bureau dispute address before mailing"),
@@ -91,7 +126,7 @@ def generate_letters(
         body = render_letter(
             letter_type=violation.letter_type,
             client_name=client.full_name or client.email,
-            client_address="(client mailing address on file)",
+            client_address=require_mailing_address(db, client),
             creditor_name=tradeline.creditor_name or "Unknown creditor",
             finding_description=violation.description,
             recipient_name=recipient_name,
@@ -149,7 +184,7 @@ def generate_secondary_bureau_letters(
         body = render_letter(
             letter_type="secondary_bureau",
             client_name=client.full_name or client.email,
-            client_address="(client mailing address on file)",
+            client_address=require_mailing_address(db, client),
             creditor_name="",
             finding_description="",
             recipient_name=agency["name"],
@@ -232,7 +267,7 @@ def escalate_to_mov(
     body = render_letter(
         letter_type="fcra_mov",
         client_name=client.full_name or client.email,
-        client_address="(client mailing address on file)",
+        client_address=require_mailing_address(db, client),
         creditor_name=tradeline.creditor_name or "Unknown creditor",
         finding_description=violation.description,
         recipient_name=original.recipient,
@@ -281,7 +316,7 @@ def generate_identity_theft_block(
     body = render_letter(
         letter_type="fcra_605b",
         client_name=client.full_name or client.email,
-        client_address="(client mailing address on file)",
+        client_address=require_mailing_address(db, client),
         creditor_name=tradeline.creditor_name or "Unknown creditor",
         finding_description="",
         recipient_name="Equifax / Experian / TransUnion",
@@ -353,7 +388,7 @@ def generate_late_payment_dispute(
     body = render_letter(
         letter_type="tila_1666b",
         client_name=client.full_name or client.email,
-        client_address="(client mailing address on file)",
+        client_address=require_mailing_address(db, client),
         creditor_name=tradeline.creditor_name or "Unknown creditor",
         finding_description=description,
         recipient_name=recipient_name,
@@ -427,7 +462,7 @@ def generate_charge_off_1099c_dispute(
     body = render_letter(
         letter_type="fcra_charge_off_1099c",
         client_name=client.full_name or client.email,
-        client_address="(client mailing address on file)",
+        client_address=require_mailing_address(db, client),
         creditor_name=tradeline.creditor_name or "Unknown creditor",
         finding_description=description,
         recipient_name=recipient_name,

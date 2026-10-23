@@ -123,3 +123,11 @@ def mark_report_unpaid(
     report.is_paid = False
     db.commit()
     return {"report_id": report.id, "is_paid": False}
+
+
+# Client mailing address + service type (see profile.py). Mounted here so no
+# other file needs to change; the client-facing calls live at /staff/profile/me.
+from . import profile as _profile  # noqa: E402
+
+router.include_router(_profile.router)
+router.include_router(_profile.staff_router)
