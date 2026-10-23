@@ -972,6 +972,11 @@ function renderSignupForm(orgFromUrl){
     '<div class="field"><label>Password</label><input type="password" id="su_password" required minlength="6"></div>' +
     '<div class="field"><label>Organization code' + (orgFromUrl ? "" : " (ask whoever referred you, or your operator)") + '</label>' +
       '<input type="text" id="su_org" value="' + esc(orgFromUrl) + '" ' + (orgFromUrl ? "readonly" : "") + ' required></div>' +
+    '<label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;font-weight:400;cursor:pointer;margin:2px 0 4px;">' +
+      '<input type="checkbox" id="su_agree" required style="width:18px;height:18px;margin-top:2px;flex:none;">' +
+      '<span>I am at least 18 and I agree to the <a href="/static/terms.html" target="_blank" rel="noopener">Terms of Service</a>, ' +
+      '<a href="/static/privacy.html" target="_blank" rel="noopener">Privacy Policy</a> and <a href="/static/refunds.html" target="_blank" rel="noopener">Refund Policy</a>.</span>' +
+    '</label>' +
     '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Create account") + '</button>' +
   '</form>';
 }
@@ -1657,6 +1662,8 @@ function bindEvents(){
   if (signupForm){
     signupForm.addEventListener("submit", function(e){
       e.preventDefault();
+      var agree = document.getElementById("su_agree");
+      if (agree && !agree.checked){ setBanner("err", "Please check the box to agree to the Terms and Privacy Policy."); return; }
       doClientSignup(
         document.getElementById("su_email").value.trim(),
         document.getElementById("su_password").value,
