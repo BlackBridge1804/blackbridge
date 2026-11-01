@@ -143,6 +143,9 @@ class OutcomeIn(BaseModel):
 
 class IdentityTheftBlockIn(BaseModel):
     identity_theft_report_number: str  # from the consumer's FTC IdentityTheft.gov report
+    # Must be true: the client confirms the account is not theirs (see
+    # app/routers/idtheft.py for the exact text that is saved).
+    confirm_not_mine: bool = False
 
 
 class LatePaymentDisputeIn(BaseModel):
