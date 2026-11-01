@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -293,15 +293,21 @@ def generate_identity_theft_block(
     report_id: str,
     tradeline_id: str,
     payload: schemas.IdentityTheftBlockIn,
+    request: Request,
     db: Session = Depends(get_db),
     client: models.Client = Depends(require_client),
 ):
-    """FCRA §605B: forces a block within 4 business days, no furnisher
+    """FCRA 605B: forces a block within 4 business days, no furnisher
     investigation -- dramatically faster than a standard dispute, but only
     for items the client attests resulted from identity theft. We never
     guess at this algorithmically; it's the client's own statement, backed
-    by their FTC identity theft report, exactly as the statute requires."""
+    by their FTC identity theft report, exactly as the statute requires.
+    The client's confirmation is required and saved (see idtheft.py)."""
+    from . import idtheft
+
     report = _get_owned_paid_report(db, report_id, client)
+    idtheft.require_attestation(payload.confirm_not_mine)
+    number = idtheft.clean_report_number(payload.identity_theft_report_number)
     tradeline = (
         db.query(models.Tradeline)
         .filter(models.Tradeline.id == tradeline_id, models.Tradeline.report_id == report.id)
@@ -310,46 +316,7 @@ def generate_identity_theft_block(
     if not tradeline:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Tradeline not found on this report")
 
-    tradeline.flagged_identity_theft = True
-    tradeline.identity_theft_report_number = payload.identity_theft_report_number
-
-    body = render_letter(
-        letter_type="fcra_605b",
-        client_name=client.full_name or client.email,
-        client_address=require_mailing_address(db, client),
-        creditor_name=tradeline.creditor_name or "Unknown creditor",
-        finding_description="",
-        recipient_name="Equifax / Experian / TransUnion",
-        recipient_address="confirm current bureau fraud/ID theft address before mailing",
-        account_number_last4=tradeline.account_number_last4,
-        identity_theft_report_number=payload.identity_theft_report_number,
-    )
-
-    # Not tied to a Violation row -- an identity-theft block is the client's own
-    # attestation, not a rules-engine finding. We create a lightweight Violation
-    # row anyway so the letter has a normal place to attach in this schema;
-    # production would give identity-theft blocks their own table instead.
-    placeholder_violation = models.Violation(
-        tradeline_id=tradeline.id,
-        rule_id="client_flagged_identity_theft",
-        legal_basis="FCRA 605B (15 U.S.C. 1681c-2)",
-        severity="high",
-        description=(
-            f"Client attests this tradeline does not relate to any transaction they made or "
-            f"authorized. FTC identity theft report #{payload.identity_theft_report_number}."
-        ),
-        letter_type="fcra_605b",
-    )
-    db.add(placeholder_violation)
-    db.flush()
-
-    letter = models.DisputeLetter(
-        violation_id=placeholder_violation.id,
-        letter_type="fcra_605b",
-        recipient="Equifax / Experian / TransUnion",
-        body_text=body,
-    )
-    db.add(letter)
+    letter = idtheft.create_605b_letter(db, client, report, tradeline, number, idtheft.client_ip(request))
     db.commit()
     db.refresh(letter)
     return letter
@@ -536,3 +503,12 @@ def get_litigation_candidates(
                 )
             )
     return candidates
+
+
+# Guided identity-theft flow and CFPB complaint draft. Mounted here so no other
+# file needs to change. Keep these lines at the very bottom of the file.
+from . import cfpb_draft as _cfpb_draft  # noqa: E402
+from . import idtheft as _idtheft  # noqa: E402
+
+router.include_router(_idtheft.router)
+router.include_router(_cfpb_draft.router)

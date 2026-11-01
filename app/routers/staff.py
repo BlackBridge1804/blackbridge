@@ -12,6 +12,7 @@ from .. import models, schemas
 from ..database import get_db
 from ..deps import require_org_staff
 from ..models import UserRole
+from .agreements import ensure_unlock_allowed
 from .reports import load_progress_for_report
 
 router = APIRouter(prefix="/staff", tags=["staff"])
@@ -107,6 +108,9 @@ def mark_report_paid(
     Stays under the operator's control; processor payments unlock automatically
     through the billing webhook instead."""
     report = _get_report_for_staff(db, report_id, principal)
+    # When the signed-agreement step is turned on, a report can only be unlocked
+    # for a client with a signed agreement whose cancellation period has ended.
+    ensure_unlock_allowed(db, report.client_id)
     report.is_paid = True
     db.commit()
     return {"report_id": report.id, "is_paid": True}
@@ -131,3 +135,10 @@ from . import profile as _profile  # noqa: E402
 
 router.include_router(_profile.router)
 router.include_router(_profile.staff_router)
+
+# Signed service agreement (see agreements.py): client routes live at
+# /staff/agreement/..., staff routes at /staff/agreements.
+from . import agreements as _agreements  # noqa: E402
+
+router.include_router(_agreements.router)
+router.include_router(_agreements.staff_router)

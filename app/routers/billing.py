@@ -17,6 +17,7 @@ from .. import models
 from ..config import settings
 from ..database import get_db
 from ..deps import assert_same_org, require_client
+from .agreements import ensure_unlock_allowed
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
@@ -33,6 +34,8 @@ def create_checkout(
     assert_same_org(client, report.organization_id)
     if report.client_id != client.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your report")
+    # No-op unless the signed-agreement step is turned on in settings.
+    ensure_unlock_allowed(db, client.id, for_client=True)
 
     if not settings.stripe_secret_key and not settings.allow_dev_unlock:
         # No processor connected: payment is handled manually and the operator
