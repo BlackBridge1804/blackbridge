@@ -23,7 +23,7 @@
   .client{padding:12px 0;border-top:1px solid var(--line);}
   .client:first-child{border-top:0}
   .badge{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;}
-  .paid{background:var(--okbg);color:var(--ok)} .unpaid{background:var(--warnbg);color:var(--warn)}
+  .paid{background:var(--okbg);color:var(--ok)} .unpaid{background:var(--warnbg);color:var(--warn)} .bad{background:var(--badbg);color:var(--bad)}
   .msg{padding:12px 14px;border-radius:10px;margin-bottom:14px;font-size:14px;}
   .msg.ok{background:var(--okbg);color:var(--ok)} .msg.err{background:var(--badbg);color:var(--bad)}
   .muted{color:var(--dim);font-size:13px}
@@ -58,7 +58,7 @@
 
 <script>
 (function(){
-  var token = null, orgId = null, clients = [], openId = null, reports = {}, profiles = {};
+  var token = null, orgId = null, clients = [], openId = null, reports = {}, profiles = {}, agr = { required: false, map: {} };
   var $ = function(id){ return document.getElementById(id); };
 
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
@@ -89,7 +89,13 @@
   function loadClients(){
     $("clientsCard").innerHTML = '<p class="muted">Loading clients… (the first load can take up to a minute)</p>';
     return api("/staff/clients" + q()).then(function(list){
-      clients = list; renderClients();
+      clients = list;
+      return api("/staff/agreements" + q()).then(function(a){
+        agr.required = !!a.required; agr.map = {};
+        a.items.forEach(function(i){ agr.map[i.client_id] = i; });
+      }).catch(function(){ agr.required = false; });
+    }).then(function(){
+      renderClients();
     }).catch(function(e){
       if (e.status === 400 && !orgId){
         // platform admin: pick an organization first
@@ -106,12 +112,30 @@
     });
   }
 
+  function etFmt(iso){
+    try { return new Date(iso).toLocaleString("en-US", { timeZone: "America/New_York", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) + " ET"; }
+    catch (e) { return iso; }
+  }
+  function agrLine(c){
+    if (!agr.required) return "";
+    var a = agr.map[c.id], st = a ? a.status : "none", txt, cls = "unpaid";
+    if (st === "signed"){
+      if (a.unlock_allowed){
+        txt = "Agreement signed " + etFmt(a.signed_at) + " · can be unlocked" + (a.can_cancel ? " (client may still cancel until " + etFmt(a.cancel_deadline) + ")" : "");
+        cls = "paid";
+      } else { txt = "Agreement signed " + etFmt(a.signed_at) + " · cancellation period ends " + etFmt(a.cancel_deadline) + " · do not unlock yet"; }
+    } else if (st === "cancelled"){ txt = "Agreement CANCELLED " + etFmt(a.cancelled_at) + " · do not unlock; refund anything already paid"; cls = "bad"; }
+    else if (st === "disclosure"){ txt = "Rights statement read, agreement not signed yet · do not unlock"; }
+    else { txt = "Has not signed the agreement · do not unlock"; }
+    return '<div style="margin-top:4px"><span class="badge ' + cls + '">' + esc(txt) + '</span></div>';
+  }
+
   function renderClients(){
     var h = "<h2 style='margin:0 0 6px;font-size:18px'>Clients</h2>";
     if (!clients.length) h += '<p class="muted">No clients have signed up yet.</p>';
     clients.forEach(function(c){
       h += '<div class="client"><div class="row"><div><strong>' + esc(c.full_name || c.email) + '</strong>' +
-        '<div class="muted">' + esc(c.email) + " · " + c.report_count + ' report(s)</div></div>' +
+        '<div class="muted">' + esc(c.email) + " · " + c.report_count + ' report(s)</div>' + agrLine(c) + '</div>' +
         (c.report_count ? '<button class="ghost" data-open="' + esc(c.id) + '">' + (openId === c.id ? "Hide" : "Reports") + '</button>' : "") +
         '</div>';
       if (openId === c.id){

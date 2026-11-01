@@ -230,6 +230,8 @@ var state = {
   orgSlug: "",
   reports: [],
   profile: null,        // { address..., service_type, has_address }
+  agreement: null,      // signed-agreement status + documents (see /staff/agreement/current)
+  authorization: null,  // limited CFPB-filing authorization (see /authorization/current)
   activeReportId: null,
   activeReport: null,   // full detail bundle for the open report
   banner: null,         // { kind, text }
@@ -359,6 +361,9 @@ function logout(){
   state.view = "auth";
   state.reports = [];
   state.profile = null;
+  state.agreement = null;
+  state.authorization = null;
+  staffAuth = null; staffDrafts = null; staffDraftsError = null;
   state.activeReportId = null;
   state.activeReport = null;
   adminAnalytics = null; adminAnalyticsError = null;
@@ -369,6 +374,7 @@ function logout(){
   state.establishFrom = null;
   state.getReportFrom = null;
   cfpbPacketText = null;
+  cfpbDraft = null; idtSelected = {}; idtConfirm = false;
   render();
 }
 
@@ -381,15 +387,47 @@ function loadProfile(){
   });
 }
 
+function loadAgreement(){
+  return api("/staff/agreement/current").then(function(a){
+    state.agreement = a;
+  }).catch(function(){
+    state.agreement = null; // feature off or unavailable: the normal unlock button shows
+  });
+}
+
+function loadAuthorization(){
+  return api("/authorization/current").then(function(a){
+    state.authorization = a;
+  }).catch(function(){
+    state.authorization = null;
+  });
+}
+
+function authPost(path, payload, okMsg){
+  clearBanner();
+  return api(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload ? JSON.stringify(payload) : undefined
+  }).then(function(a){
+    state.authorization = a;
+    if (okMsg) setBanner("ok", okMsg); else render();
+  }).catch(function(e){
+    setBanner("error", e.message);
+  });
+}
+
 function loadReportsList(){
   return Promise.all([
     api("/reports").then(function(list){ state.reports = list; }),
-    loadProfile()
+    loadProfile(),
+    loadAgreement(),
+    loadAuthorization()
   ]);
 }
 
 function loadReportDetail(reportId){
-  var bundle = { summary: null, progress: null, violations: [], tradelines: [], letters: [], recSummary: null, recommendations: [], litigation: [] };
+  var bundle = { summary: null, progress: null, violations: [], tradelines: [], letters: [], recSummary: null, recommendations: [], litigation: [], idt: null };
   return api("/reports/" + reportId + "/summary").then(function(s){
     bundle.summary = s;
     var calls = [
@@ -401,6 +439,7 @@ function loadReportDetail(reportId){
       calls.push(api("/reports/" + reportId + "/tradelines").then(function(t){ bundle.tradelines = t; }).catch(function(){}));
       calls.push(api("/reports/" + reportId + "/letters").then(function(l){ bundle.letters = l; }).catch(function(){}));
       calls.push(api("/reports/" + reportId + "/recommendations").then(function(r){ bundle.recommendations = r; }).catch(function(){}));
+      calls.push(api("/reports/" + reportId + "/letters/idtheft/status").then(function(i){ bundle.idt = i; }).catch(function(){}));
       calls.push(api("/reports/" + reportId + "/letters/litigation-candidates").then(function(l){ bundle.litigation = l; }).catch(function(){}));
     }
     return Promise.all(calls);
@@ -411,9 +450,13 @@ function loadReportDetail(reportId){
 }
 
 var cfpbPacketText = null; // fetched on demand when the client clicks "Get complaint packet"
+var cfpbDraft = null;      // complaint drafts, fetched on demand
+var idtSelected = {};      // tradeline id -> true: accounts ticked in the identity theft guide
+var idtConfirm = false;    // the "these accounts are not mine" box
 
 function openReport(reportId){
   cfpbPacketText = null;
+  cfpbDraft = null; idtSelected = {}; idtConfirm = false;
   setBusy(true);
   loadReportDetail(reportId).then(function(){
     setBusy(false);
@@ -484,6 +527,109 @@ function doSaveProfile(payload){
     setBusy(false);
     setBanner("error", e.message);
   });
+}
+
+/* ---------- signed service agreement ---------- */
+function agrPost(path, payload, okMsg){
+  clearBanner();
+  return api(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload ? JSON.stringify(payload) : undefined
+  }).then(function(a){
+    state.agreement = a;
+    if (okMsg) setBanner("ok", okMsg); else render();
+  }).catch(function(e){
+    setBanner("error", e.message);
+  });
+}
+
+function agrDocBox(text){
+  return '<div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;line-height:1.55;white-space:pre-wrap;background:rgba(127,127,127,.06);">' + esc(text) + '</div>';
+}
+
+function unlockButtonHtml(reportId){
+  return '<button data-checkout="' + esc(reportId) + '" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Unlock full breakdown") + '</button>';
+}
+
+function unlockSection(reportId){
+  var a = state.agreement;
+  if (!a || !a.required) return unlockButtonHtml(reportId);
+  if (!a.configured){
+    return '<p class="muted">Our service agreement is being finalized. Please contact us at (669) 272-2854 or BlackBridgeoffice@Gmail.com to complete your purchase.</p>';
+  }
+  var d = a.documents || {};
+  var h = "";
+  if (a.status === "none" || a.status === "cancelled"){
+    if (a.status === "cancelled"){
+      h += '<p class="muted">You cancelled your earlier agreement. To continue, please read and sign a new one.</p>';
+    }
+    h += '<h3 style="margin-bottom:4px;">Step 1 of 2: Your consumer rights</h3>' +
+      '<p class="muted" style="margin-top:0;">Please read this statement before you sign anything. It is a separate document from the agreement.</p>' +
+      '<strong style="display:block;margin:8px 0;">' + esc(d.disclosure_title) + '</strong>' +
+      agrDocBox(d.disclosure_text) +
+      '<form id="agrDisclosureForm" class="stack" style="margin-top:12px;">' +
+        '<div class="field"><label>Type your full name to confirm you received and read this statement</label>' +
+        '<input type="text" id="agr_name1" maxlength="120" required autocomplete="name"></div>' +
+        '<button type="submit" class="block">I received and read this statement</button>' +
+      '</form>';
+    return h;
+  }
+  if (a.status === "disclosure"){
+    h += '<h3 style="margin-bottom:4px;">Step 2 of 2: Service agreement</h3>' +
+      '<p class="muted" style="margin-top:0;">Rights statement acknowledged. Please read the agreement, then sign.</p>' +
+      agrDocBox(d.agreement_text) +
+      '<form id="agrSignForm" class="stack" style="margin-top:12px;">' +
+        '<p style="font-weight:800;margin:0;">' + esc(d.cancel_statement) + '</p>' +
+        '<div class="field"><label>Type your full legal name to sign</label>' +
+        '<input type="text" id="agr_name2" maxlength="120" required autocomplete="name" value="' + esc(d.disclosure_signed_name || "") + '"></div>' +
+        '<label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;font-weight:400;cursor:pointer;">' +
+          '<input type="checkbox" id="agr_accept" required style="width:18px;height:18px;margin-top:2px;flex:none;">' +
+          '<span>I have read this agreement and I agree to it. I understand I can cancel it without penalty or obligation before midnight of the 3rd business day after today.</span>' +
+        '</label>' +
+        '<button type="submit" class="block">Sign agreement</button>' +
+      '</form>';
+    return h;
+  }
+  // signed
+  h += '<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:8px 0 12px;font-size:14px;line-height:1.55;">' +
+    '<strong>Agreement signed</strong> by ' + esc(a.signed_name) + (d.signed_at_text ? ' on ' + esc(d.signed_at_text) : '') + '.<br>';
+  if (a.can_cancel){
+    h += 'You may cancel without penalty or obligation until <strong>' + esc(a.cancel_deadline_text) + '</strong>.<br>';
+  }
+  h += '<div class="row-wrap" style="margin-top:10px;gap:8px;">' +
+    '<button type="button" class="secondary" data-agr-print="1">View / print my copy</button>' +
+    (a.can_cancel ? '<button type="button" class="secondary" data-agr-cancel="1">Cancel agreement</button>' : '') +
+    '</div></div>';
+  if (a.unlock_allowed){
+    h += unlockButtonHtml(reportId);
+  } else {
+    h += '<p class="muted">Your full breakdown can be unlocked after the cancellation period ends (' + esc(a.cancel_deadline_text) + ').</p>';
+  }
+  return h;
+}
+
+function printAgreementCopy(){
+  var a = state.agreement;
+  if (!a || !a.documents || !a.documents.agreement_text){ return; }
+  var d = a.documents;
+  var w = window.open("", "_blank");
+  if (!w){ setBanner("error", "Please allow pop-ups so we can open your copy."); return; }
+  function pre(t){ return '<pre style="white-space:pre-wrap;font-family:inherit;font-size:14px;line-height:1.55;">' + esc(t) + '</pre>'; }
+  var html = '<!doctype html><html><head><meta charset="utf-8"><title>My signed agreement</title></head>' +
+    '<body style="font-family:Arial,Helvetica,sans-serif;max-width:780px;margin:24px auto;padding:0 16px;color:#111;">' +
+    '<h2>' + esc(d.disclosure_title) + '</h2>' + pre(d.disclosure_text) +
+    '<p><strong>Acknowledged by:</strong> ' + esc(d.disclosure_signed_name) + ' &nbsp; <strong>Date:</strong> ' + esc(d.disclosure_ack_at) + '</p>' +
+    '<div style="page-break-before:always"></div>' +
+    '<h2>' + esc(d.agreement_title) + '</h2>' + pre(d.agreement_text) +
+    '<p style="font-weight:800;">' + esc(d.cancel_statement) + '</p>' +
+    '<p><strong>Signed by:</strong> ' + esc(d.signed_name) + ' &nbsp; <strong>Date:</strong> ' + esc(d.signed_at_text) + '</p>' +
+    '<div style="page-break-before:always"></div>' + pre(d.cancellation_notice) +
+    '</body></html>';
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+  setTimeout(function(){ try { w.print(); } catch (e) {} }, 400);
 }
 
 function doUpload(file){
@@ -588,26 +734,73 @@ function doEscalateMov(reportId, letterId){
   });
 }
 
-function doIdentityTheftBlock(reportId, tradelineId, reportNumber){
-  if (!tradelineId || !reportNumber){
-    setBanner("error", "Pick an account and enter your FTC identity theft report number.");
-    render();
+function doSaveIdtCase(reportId, number){
+  if (!number){
+    setBanner("error", "Enter the report number from your FTC identity theft report.");
     return;
   }
   clearBanner(); setBusy(true);
-  api("/reports/" + reportId + "/letters/identity-theft-block/" + tradelineId, {
+  api("/reports/" + reportId + "/letters/idtheft/case", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ identity_theft_report_number: reportNumber }),
+    body: JSON.stringify({ identity_theft_report_number: number }),
   }).then(function(){
     return refreshActiveReport();
   }).then(function(){
     setBusy(false);
-    setBanner("ok", "Identity theft block letter generated below (FCRA §605B).");
+    setBanner("ok", "Report number saved. Next: pick the accounts that aren't yours.");
     render();
   }).catch(function(e){
     setBusy(false); setBanner("error", e.message); render();
   });
+}
+
+function doGenerateIdt(reportId){
+  var ids = Object.keys(idtSelected).filter(function(k){ return idtSelected[k]; });
+  if (!ids.length){ setBanner("error", "Tick at least one account that isn't yours."); return; }
+  if (!idtConfirm){ setBanner("error", "Please tick the confirmation box first."); return; }
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/letters/idtheft/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tradeline_ids: ids, confirm_not_mine: true }),
+  }).then(function(res){
+    idtSelected = {}; idtConfirm = false;
+    return refreshActiveReport().then(function(){ return res; });
+  }).then(function(res){
+    setBusy(false);
+    var n = res.created.length, k = res.skipped.length;
+    setBanner("ok", n + " block letter" + (n === 1 ? "" : "s") + " created (see Your letters above)." + (k ? " " + k + " already had one." : "") + " Next: mail them with the enclosures listed below.");
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function doLoadCfpbDraft(reportId){
+  clearBanner(); setBusy(true);
+  api("/reports/" + reportId + "/letters/cfpb/draft").then(function(res){
+    cfpbDraft = res;
+    setBusy(false);
+    render();
+  }).catch(function(e){
+    setBusy(false); setBanner("error", e.message); render();
+  });
+}
+
+function copyFrom(elId, btn){
+  var el = document.getElementById(elId);
+  if (!el) return;
+  var text = el.textContent;
+  function done(){ if (btn){ var old = btn.textContent; btn.textContent = "Copied"; setTimeout(function(){ btn.textContent = old; }, 1500); } }
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(text).then(done).catch(function(){ fallbackCopy(el, done); });
+  } else { fallbackCopy(el, done); }
+}
+function fallbackCopy(el, done){
+  var r = document.createRange(); r.selectNodeContents(el);
+  var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+  try{ document.execCommand("copy"); done(); }catch(e){}
 }
 
 /* ---------- admin actions ---------- */
@@ -1023,6 +1216,7 @@ function renderClientDashboard(){
 
   return '' +
   renderProfileCard() +
+  renderAuthorizationCard() +
   '<div class="card">' +
     '<h2>Upload a credit report</h2>' +
     '<p>Accepts the demo <code>.txt</code> sample, a real PDF export, or basically any other file -- we’ll read it and pull out every account.</p>' +
@@ -1042,6 +1236,36 @@ function renderClientDashboard(){
     '<button type="button" class="secondary block" data-open-establish="1">See how to establish credit from scratch</button>' +
   '</div>' +
   renderPartnerOffersSection();
+}
+
+function renderAuthorizationCard(){
+  var a = state.authorization;
+  if (!a || !a.eligible) return "";
+  var h = '<div class="card"><div class="row-wrap" style="justify-content:space-between;"><h2 style="margin:0;">' + esc(a.title) + '</h2>' +
+    (a.status === "active" ? '<span class="badge paid">Active</span>' : '<span class="badge unpaid">' + (a.status === "revoked" ? "Cancelled" : "Not signed") + '</span>') + '</div>';
+  if (a.status === "active"){
+    h += '<p class="muted" style="margin-top:6px;">Signed by ' + esc(a.signed_name) + ' on ' + esc(fmtDate(a.signed_at)) + '. Our staff can file CFPB complaints for you while this is active.</p>' +
+      '<details><summary class="muted">Read what you signed</summary>' + agrDocBox(a.text) + '</details>' +
+      '<button type="button" id="authRevokeBtn" class="secondary block" style="margin-top:12px;">Cancel this authorization</button>';
+  } else {
+    h += '<p class="muted" style="margin-top:6px;">' + (a.status === "revoked"
+      ? 'You cancelled this on ' + esc(fmtDate(a.revoked_at)) + '. Nothing new can be filed for you. You can sign again if you change your mind.'
+      : 'Optional. This lets our staff file CFPB complaints in your name when a company misses a deadline. It is not a power of attorney, and you can cancel it any time.') + '</p>' +
+      agrDocBox(a.text) +
+      '<form id="authSignForm" class="stack" style="margin-top:12px;">' +
+        '<div class="field"><label>Type your full name to sign</label><input type="text" id="auth_name" maxlength="120" required autocomplete="name"></div>' +
+        '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;">' +
+          '<input type="checkbox" id="auth_accept" required style="width:18px;height:18px;margin-top:2px;flex:none;">' +
+          '<span style="font-size:13.5px;font-weight:400;">I have read this authorization and I agree to it.</span></label>' +
+        '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>Sign authorization</button>' +
+      '</form>';
+  }
+  if (a.filings && a.filings.length){
+    h += '<div class="divider"></div><h3>Complaints filed for you</h3><ul style="margin:6px 0 0 18px;">' +
+      a.filings.map(function(f){ return '<li>' + esc(f.company) + ', ' + esc(fmtDate(f.filed_at)) + (f.complaint_number ? ', CFPB number ' + esc(f.complaint_number) : '') + '</li>'; }).join("") + '</ul>' +
+      '<p class="disclaimer">The CFPB sends each company\'s response to you. Log in at consumerfinance.gov to read it.</p>';
+  }
+  return h + '</div>';
 }
 
 function renderProfileCard(){
@@ -1205,7 +1429,7 @@ function renderReportDetailView(){
   if (!s.is_paid){
     html += '<div class="divider"></div>' +
       '<p>Unlock the full breakdown to see every finding with its legal basis, generate ready-to-mail dispute letters, sweep the ~10 specialty/secondary bureaus, and get the complete "remove this / add that" action plan.</p>' +
-      '<button data-checkout="' + esc(s.report_id) + '" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Unlock full breakdown") + '</button>';
+      unlockSection(s.report_id);
   }
 
   html += '</div>';
@@ -1366,19 +1590,80 @@ function renderLetterCard(l, reportId){
 }
 
 function renderIdentityTheftSection(b, reportId){
-  var options = b.tradelines.map(function(t){
-    return '<option value="' + esc(t.id) + '">' + esc(t.creditor_name || "Unnamed account") + (t.flagged_identity_theft ? " (already flagged)" : "") + '</option>';
+  var i = b.idt;
+  var head = '<h2>Identity theft block (FCRA §605B)</h2>';
+  if (!i){
+    return '<div class="card">' + head + '<p class="muted">The identity theft guide could not load. Refresh the page and try again.</p></div>';
+  }
+  var cur = i.current_step;
+  var stepsHtml = i.steps.map(function(step, n){
+    var cls = step.done ? "done" : (step.key === cur ? "current" : "");
+    return '<div class="step ' + cls + '">' +
+      (n === i.steps.length - 1 ? "" : '<div class="line"></div>') +
+      '<div class="dot2">' + (step.done ? "✓" : (n + 1)) + '</div>' +
+      '<div class="label">' + esc(step.label) + '</div></div>';
   }).join("");
 
-  return '' +
-  '<div class="card">' +
-    '<h2>Identity theft block (FCRA §605B)</h2>' +
-    '<p>If an account isn’t yours, this forces a block within 4 business days — much faster than a standard dispute. It requires your own FTC identity theft report number from <a href="https://www.identitytheft.gov" target="_blank" rel="noopener">identitytheft.gov</a>; we never guess at this.</p>' +
-    '<form id="idTheftForm" data-report="' + esc(reportId) + '" class="stack">' +
-      '<div class="field"><label>Account</label><select id="idt_tradeline">' + options + '</select></div>' +
-      '<div class="field"><label>FTC identity theft report number</label><input type="text" id="idt_number" placeholder="e.g. 123456789"></div>' +
-      '<button type="submit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Generate block letter</button>' +
+  var busy = state.busy ? " disabled" : "";
+
+  // step 1: the FTC report
+  var step1 = '' +
+    '<h3>Step 1: File your FTC identity theft report</h3>' +
+    '<p>Only you can do this part. It is free and takes about 15 minutes. Go to identitytheft.gov, tell them what happened, and save the report as a PDF. If a company later asks for a police report too, you can file one locally.</p>' +
+    '<div class="row-wrap"><a class="btn" href="' + esc(i.ftc_url) + '" target="_blank" rel="noopener">Open identitytheft.gov</a></div>' +
+    '<form id="idtCaseForm" data-report="' + esc(reportId) + '" class="row-wrap" style="margin-top:12px;">' +
+      '<input type="text" id="idt_number" placeholder="Your FTC report number" value="' + esc(i.report_number || "") + '" style="flex:1;min-width:200px;">' +
+      '<button type="submit" class="secondary"' + busy + '>' + (i.report_number ? "Update number" : "Save number") + '</button>' +
     '</form>' +
+    (i.report_number ? '<p class="disclaimer">Saved. We never file or look up your report for you.</p>' : "");
+
+  // step 2: pick accounts + confirm
+  var rows = i.accounts.map(function(a){
+    var label = esc(a.creditor_name || "Unnamed account") + (a.account_number_last4 ? " (ending " + esc(a.account_number_last4) + ")" : "");
+    if (a.has_letter){
+      var note = a.outcome_status ? "response: " + esc(a.outcome_status) : (a.past_window ? "no response recorded, past the deadline" : "waiting " + (a.days_waiting || 0) + " day(s)");
+      return '<div class="row-wrap" style="padding:6px 0;"><span style="flex:1;">' + label + '</span><span class="badge paid">Letter created</span><span class="muted">' + note + '</span></div>';
+    }
+    return '<label class="row-wrap" style="padding:6px 0;cursor:pointer;">' +
+      '<input type="checkbox" data-idt-acct="' + esc(a.tradeline_id) + '"' + (idtSelected[a.tradeline_id] ? " checked" : "") + ' style="width:18px;height:18px;flex:none;">' +
+      '<span style="flex:1;">' + label + '</span></label>';
+  }).join("");
+  var anyOpen = i.accounts.some(function(a){ return !a.has_letter; });
+
+  var step2 = '' +
+    '<h3>Step 2: Pick the accounts that are not yours</h3>' +
+    '<p>Only tick accounts you did not open and did not authorize. Do not tick an account you opened yourself, even if you no longer want it. A bureau can reverse a block that was based on a false statement.</p>' +
+    '<div>' + rows + '</div>' +
+    (anyOpen ?
+      '<div class="notice-box" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-top:10px;">' +
+        '<label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;">' +
+          '<input type="checkbox" id="idt_confirm"' + (idtConfirm ? " checked" : "") + ' style="width:18px;height:18px;margin-top:2px;flex:none;">' +
+          '<span style="font-size:13.5px;font-weight:400;">' + esc(i.attestation_text) + '</span>' +
+        '</label>' +
+      '</div>' +
+      '<button type="button" id="idtGenerateBtn" data-report="' + esc(reportId) + '" class="secondary block" style="margin-top:12px;"' + busy + '>Create block letters for ticked accounts</button>'
+      : '<p class="disclaimer">Every account on this report already has a block letter.</p>');
+
+  // step 3: mail
+  var step3 = '' +
+    '<h3>Step 3: Mail each letter with these enclosures</h3>' +
+    '<ul style="margin:6px 0 0 18px;">' + i.enclosures.map(function(e){ return '<li>' + esc(e) + '</li>'; }).join("") + '</ul>' +
+    '<p>Send a separate packet to each bureau that shows the account. Certified mail with a tracking number is best. Keep copies of everything. Use the bureau\'s current fraud or identity theft address from its website.</p>';
+
+  // step 4: wait and record
+  var late = i.accounts.filter(function(a){ return a.past_window; }).length;
+  var step4 = '' +
+    '<h3>Step 4: Record each response</h3>' +
+    '<p>A bureau must block the information within 4 business days after it receives your letter and documents. Record what comes back under Your letters above.' +
+    (late ? ' <strong>' + late + ' letter(s) are past the ' + i.wait_days + '-day mark with no response recorded.</strong> Use the CFPB complaint draft below.' : '') + '</p>';
+
+  return '<div class="card">' + head +
+    '<p>If an account is not yours, this is the fastest route. It needs your own FTC identity theft report. We guide you, but you file the report and mail the letters yourself.</p>' +
+    '<div class="stepper" style="margin:12px 0;">' + stepsHtml + '</div>' +
+    '<div class="divider"></div>' + step1 +
+    '<div class="divider"></div>' + step2 +
+    '<div class="divider"></div>' + step3 +
+    '<div class="divider"></div>' + step4 +
   '</div>';
 }
 
@@ -1413,6 +1698,33 @@ function renderAdditionalDisputesSection(b, reportId){
   '</div>';
 }
 
+function renderCfpbDraft(reportId){
+  var d = cfpbDraft;
+  if (!d) return "";
+  var out = '<div class="divider"></div><p><strong>' + esc(d.message) + '</strong></p>';
+  d.complaints.forEach(function(c, n){
+    out += '' +
+    '<div class="violation" style="margin-top:12px;">' +
+      '<div class="top"><strong>Complaint ' + (n + 1) + ': ' + esc(c.company) + '</strong><span class="pill">' + c.item_count + ' item(s)</span></div>' +
+      '<p class="disclaimer">On the CFPB form, look for: <strong>' + esc(c.product) + '</strong> &rarr; <strong>' + esc(c.issue) + '</strong> &rarr; <strong>' + esc(c.sub_issue) + '</strong>. The form\'s wording changes, so pick the closest option.</p>' +
+      '<div class="row-wrap" style="justify-content:space-between;"><span class="muted">What happened (' + c.narrative_chars + ' characters)</span><button type="button" class="secondary" data-copy="cfpb_n_' + n + '">Copy</button></div>' +
+      '<pre id="cfpb_n_' + n + '" style="white-space:pre-wrap;">' + esc(c.narrative) + '</pre>' +
+      '<div class="row-wrap" style="justify-content:space-between;"><span class="muted">What I want done</span><button type="button" class="secondary" data-copy="cfpb_r_' + n + '">Copy</button></div>' +
+      '<pre id="cfpb_r_' + n + '" style="white-space:pre-wrap;">' + esc(c.resolution) + '</pre>' +
+    '</div>';
+  });
+  if (d.not_yet && d.not_yet.length){
+    out += '<p class="muted" style="margin-top:12px;">Still inside the response window:</p><ul style="margin:4px 0 0 18px;">' +
+      d.not_yet.map(function(x){ return '<li>' + esc(x.company) + ' / ' + esc(x.creditor_name || "account") + ': sent ' + esc(x.sent_on) + ', ' + x.days_left + ' day(s) left</li>'; }).join("") + '</ul>';
+  }
+  if (d.ready){
+    out += '<p style="margin-top:12px;"><strong>Before you file, check each one:</strong></p><ul style="margin:4px 0 0 18px;">' +
+      d.checklist.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join("") + '</ul>' +
+      '<p class="disclaimer">This is a draft built from your own records. Read it, fix anything that is not exactly true, and file it yourself. It is not legal advice.</p>';
+  }
+  return out;
+}
+
 function renderCfpbSection(b, reportId){
   var p = b.progress;
   var filed = p && p.cfpb_complaint_filed;
@@ -1425,6 +1737,7 @@ function renderCfpbSection(b, reportId){
     packetBlock = '<details open style="margin-top:12px;"><summary class="muted">Complaint packet -- copy into the CFPB form</summary><pre>' + esc(cfpbPacketText) + '</pre></details>';
   }
 
+  var draftBlock = renderCfpbDraft(reportId);
   return '' +
   '<div class="card">' +
     '<div class="row-wrap" style="justify-content:space-between;">' +
@@ -1433,9 +1746,11 @@ function renderCfpbSection(b, reportId){
     '</div>' +
     '<p>A CFPB complaint is a real federal process, separate from mailing a dispute letter -- the company is required to respond to the CFPB directly, which often gets faster attention than a mailed letter alone. <strong>This app never creates an account or submits anything for you</strong> -- you create your own free account and submit it yourself.</p>' +
     '<div class="row-wrap">' +
-      '<button type="button" data-cfpb-packet="' + esc(reportId) + '" class="secondary"' + (state.busy ? " disabled" : "") + '>Get complaint packet</button>' +
+      '<button type="button" data-cfpb-draft="' + esc(reportId) + '"' + (state.busy ? " disabled" : "") + '>Draft my complaint</button>' +
+      '<button type="button" data-cfpb-packet="' + esc(reportId) + '" class="secondary"' + (state.busy ? " disabled" : "") + '>Findings summary</button>' +
       '<a class="btn" href="https://www.consumerfinance.gov/complaint/" target="_blank" rel="noopener">Go to consumerfinance.gov/complaint</a>' +
     '</div>' +
+    draftBlock +
     packetBlock +
     '<div class="divider"></div>' +
     '<form id="cfpbFiledForm" data-report="' + esc(reportId) + '" class="row-wrap">' +
@@ -1473,6 +1788,51 @@ var staffSelectedClientId = null;
 var staffSelectedClientReports = null;
 var staffSelectedClientError = null;
 var staffClientsLoading = false;
+var staffAuth = null;          // authorization status for the open client
+var staffDrafts = null;        // complaint drafts for the open client (only when allowed)
+var staffDraftsError = null;
+
+function loadStaffAuth(clientId){
+  api("/authorization/staff/client/" + clientId).then(function(a){
+    staffAuth = a; render();
+  }).catch(function(){ staffAuth = null; render(); });
+}
+
+function doStaffServiceType(clientId, kind){
+  clearBanner(); setBusy(true);
+  api("/staff/clients/" + clientId + "/service-type", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ service_type: kind }),
+  }).then(function(){
+    staffDrafts = null; staffDraftsError = null;
+    return api("/authorization/staff/client/" + clientId).then(function(a){ staffAuth = a; });
+  }).then(function(){
+    setBusy(false); setBanner("ok", "Service type saved."); render();
+  }).catch(function(e){ setBusy(false); setBanner("error", e.message); render(); });
+}
+
+function doStaffLoadDrafts(clientId){
+  clearBanner(); setBusy(true);
+  api("/authorization/staff/client/" + clientId + "/cfpb-drafts").then(function(res){
+    staffDrafts = res; staffDraftsError = null; setBusy(false); render();
+  }).catch(function(e){
+    staffDrafts = null; staffDraftsError = e.message; setBusy(false); render();
+  });
+}
+
+function doStaffMarkFiled(clientId, reportId, company, number){
+  clearBanner(); setBusy(true);
+  api("/authorization/staff/client/" + clientId + "/filed", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ report_id: reportId, company: company, complaint_number: number || null }),
+  }).then(function(){
+    return api("/authorization/staff/client/" + clientId).then(function(a){ staffAuth = a; });
+  }).then(function(){
+    setBusy(false); setBanner("ok", "Filing logged. The client can see it in their account."); render();
+  }).catch(function(e){ setBusy(false); setBanner("error", e.message); render(); });
+}
 
 function loadStaffClients(){
   if (staffClientsLoading) return;
@@ -1492,6 +1852,8 @@ function openStaffClient(clientId){
   staffSelectedClientId = clientId;
   staffSelectedClientReports = null;
   staffSelectedClientError = null;
+  staffAuth = null; staffDrafts = null; staffDraftsError = null;
+  loadStaffAuth(clientId);
   render();
   api("/staff/clients/" + clientId + "/reports").then(function(reports){
     staffSelectedClientReports = reports;
@@ -1500,6 +1862,58 @@ function openStaffClient(clientId){
     staffSelectedClientError = e.message;
     render();
   });
+}
+
+function renderStaffDoneForYou(clientId){
+  var a = staffAuth;
+  var h = '<div class="divider"></div><h3>Do-it-for-you service</h3>';
+  if (!a){ return h + '<p class="muted">Loading…</p>'; }
+  var dfy = a.service_type === "done_for_you";
+  h += '<div class="row-wrap">' +
+    '<select id="staff_service_type"><option value="diy"' + (dfy ? "" : " selected") + '>Do it yourself (client files everything)</option>' +
+    '<option value="done_for_you"' + (dfy ? " selected" : "") + '>Do it for you (staff files for the client)</option></select>' +
+    '<button type="button" class="secondary" data-staff-service="' + esc(clientId) + '"' + (state.busy ? " disabled" : "") + '>Save</button></div>' +
+    '<p class="disclaimer">Do-it-for-you is a different service with its own legal rules. Do not use it for real clients until your attorney has approved your contract and process.</p>';
+  if (!dfy) return h;
+
+  h += '<p style="margin-top:12px;"><strong>Authorization:</strong> ' +
+    (a.status === "active" ? '<span class="badge paid">Active</span> signed ' + esc(fmtDate(a.signed_at))
+      : a.status === "revoked" ? '<span class="badge unpaid">Cancelled by client</span> ' + esc(fmtDate(a.revoked_at))
+      : '<span class="badge unpaid">Not signed</span>') + '</p>';
+  if (a.status === "active" && !a.agreement_ok){
+    h += '<p class="banner warn">This client has no signed service agreement on file. Do not file anything for them.</p>';
+  }
+  if (a.status !== "active" || !a.agreement_ok){
+    h += '<p class="muted">Complaint drafts for this client stay hidden until the authorization is active.</p>';
+  } else {
+    h += '<button type="button" data-staff-drafts="' + esc(clientId) + '"' + (state.busy ? " disabled" : "") + '>Show complaint drafts</button>' +
+      '<p class="disclaimer">File each complaint yourself on the CFPB website as "Credit repair organization" and attach the client\'s signed authorization. The CFPB expects you never to file without the client\'s knowledge and permission.</p>';
+  }
+  if (staffDraftsError){ h += '<p class="banner error">' + esc(staffDraftsError) + '</p>'; }
+  if (staffDrafts){
+    staffDrafts.reports.forEach(function(rep, ri){
+      h += '<div class="violation" style="margin-top:12px;"><strong>Report ' + esc(rep.report_label) + '…</strong> <span class="muted">' + esc(rep.message) + '</span>';
+      rep.complaints.forEach(function(c, ci){
+        var nid = "sd_n_" + ri + "_" + ci, rid = "sd_r_" + ri + "_" + ci;
+        h += '<div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;">' +
+          '<strong>' + esc(c.company) + '</strong> <span class="pill">' + c.item_count + ' item(s)</span>' +
+          '<p class="disclaimer">' + esc(c.product) + ' → ' + esc(c.issue) + ' → ' + esc(c.sub_issue) + '</p>' +
+          '<div class="row-wrap" style="justify-content:space-between;"><span class="muted">What happened</span><button type="button" class="secondary" data-copy="' + nid + '">Copy</button></div>' +
+          '<pre id="' + nid + '" style="white-space:pre-wrap;">' + esc(c.narrative) + '</pre>' +
+          '<div class="row-wrap" style="justify-content:space-between;"><span class="muted">What the client wants</span><button type="button" class="secondary" data-copy="' + rid + '">Copy</button></div>' +
+          '<pre id="' + rid + '" style="white-space:pre-wrap;">' + esc(c.resolution) + '</pre>' +
+          '<div class="row-wrap" style="margin-top:6px;"><input type="text" id="sd_num_' + ri + '_' + ci + '" placeholder="CFPB complaint number (optional)" style="flex:1;min-width:180px;">' +
+          '<button type="button" data-staff-filed="' + esc(clientId) + '|' + esc(rep.report_id) + '|' + ri + '|' + ci + '"' + (state.busy ? " disabled" : "") + '>Mark as filed</button></div>' +
+        '</div>';
+      });
+      h += '</div>';
+    });
+  }
+  if (a.filings && a.filings.length){
+    h += '<p style="margin-top:12px;"><strong>Filed so far</strong></p><ul style="margin:4px 0 0 18px;">' +
+      a.filings.map(function(f){ return '<li>' + esc(f.company) + ', ' + esc(fmtDate(f.filed_at)) + (f.complaint_number ? ', #' + esc(f.complaint_number) : '') + '</li>'; }).join("") + '</ul>';
+  }
+  return h;
 }
 
 function renderStaffClientsCard(){
@@ -1525,6 +1939,7 @@ function renderStaffClientsCard(){
         '</div>';
       }).join("");
     }
+    html += renderStaffDoneForYou(staffSelectedClientId);
     html += '</div>';
     return html;
   }
@@ -1749,20 +2164,88 @@ function bindEvents(){
     });
   });
 
-  var idForm = document.getElementById("idTheftForm");
-  if (idForm){
-    idForm.addEventListener("submit", function(e){
+  var idtCase = document.getElementById("idtCaseForm");
+  if (idtCase){
+    idtCase.addEventListener("submit", function(e){
       e.preventDefault();
-      var reportId = idForm.getAttribute("data-report");
-      var tradelineId = document.getElementById("idt_tradeline").value;
-      var num = document.getElementById("idt_number").value.trim();
-      doIdentityTheftBlock(reportId, tradelineId, num);
+      doSaveIdtCase(idtCase.getAttribute("data-report"), document.getElementById("idt_number").value.trim());
     });
   }
+  app.querySelectorAll("[data-idt-acct]").forEach(function(cb){
+    cb.addEventListener("change", function(){ idtSelected[cb.getAttribute("data-idt-acct")] = cb.checked; });
+  });
+  var idtConf = document.getElementById("idt_confirm");
+  if (idtConf){ idtConf.addEventListener("change", function(){ idtConfirm = idtConf.checked; }); }
+  var idtGen = document.getElementById("idtGenerateBtn");
+  if (idtGen){ idtGen.addEventListener("click", function(){ doGenerateIdt(idtGen.getAttribute("data-report")); }); }
+  var cfpbDraftBtn = app.querySelector("[data-cfpb-draft]");
+  if (cfpbDraftBtn){ cfpbDraftBtn.addEventListener("click", function(){ doLoadCfpbDraft(cfpbDraftBtn.getAttribute("data-cfpb-draft")); }); }
+  app.querySelectorAll("[data-copy]").forEach(function(btn){
+    btn.addEventListener("click", function(){ copyFrom(btn.getAttribute("data-copy"), btn); });
+  });
 
   app.querySelectorAll("[data-open-client]").forEach(function(el){
     el.addEventListener("click", function(){ openStaffClient(el.getAttribute("data-open-client")); });
   });
+  var authForm = document.getElementById("authSignForm");
+  if (authForm){
+    authForm.addEventListener("submit", function(e){
+      e.preventDefault();
+      authPost("/authorization/sign", { full_name: document.getElementById("auth_name").value.trim(), accept: document.getElementById("auth_accept").checked }, "Authorization signed. You can cancel it any time on this page.");
+    });
+  }
+  var authRevoke = document.getElementById("authRevokeBtn");
+  if (authRevoke){
+    authRevoke.addEventListener("click", function(){
+      if (!window.confirm("Cancel this authorization? Our staff will not be able to file anything new for you.")) return;
+      authPost("/authorization/revoke", null, "Authorization cancelled.");
+    });
+  }
+  var staffSvc = app.querySelector("[data-staff-service]");
+  if (staffSvc){
+    staffSvc.addEventListener("click", function(){ doStaffServiceType(staffSvc.getAttribute("data-staff-service"), document.getElementById("staff_service_type").value); });
+  }
+  var staffDraftBtn = app.querySelector("[data-staff-drafts]");
+  if (staffDraftBtn){
+    staffDraftBtn.addEventListener("click", function(){ doStaffLoadDrafts(staffDraftBtn.getAttribute("data-staff-drafts")); });
+  }
+  app.querySelectorAll("[data-staff-filed]").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var parts = btn.getAttribute("data-staff-filed").split("|");
+      var ri = parseInt(parts[2], 10), ci = parseInt(parts[3], 10);
+      var company = staffDrafts.reports[ri].complaints[ci].company;
+      doStaffMarkFiled(parts[0], parts[1], company, document.getElementById("sd_num_" + ri + "_" + ci).value.trim());
+    });
+  });
+  var agrDisc = document.getElementById("agrDisclosureForm");
+  if (agrDisc){
+    agrDisc.addEventListener("submit", function(e){
+      e.preventDefault();
+      var btn = agrDisc.querySelector("button[type=submit]"); if (btn) btn.disabled = true;
+      agrPost("/staff/agreement/disclosure", { full_name: document.getElementById("agr_name1").value.trim() });
+    });
+  }
+  var agrSign = document.getElementById("agrSignForm");
+  if (agrSign){
+    agrSign.addEventListener("submit", function(e){
+      e.preventDefault();
+      var btn = agrSign.querySelector("button[type=submit]"); if (btn) btn.disabled = true;
+      agrPost("/staff/agreement/sign", {
+        full_name: document.getElementById("agr_name2").value.trim(),
+        accept: document.getElementById("agr_accept").checked
+      }, "Agreement signed. You can view or print your copy below.");
+    });
+  }
+  var agrCancel = app.querySelector("[data-agr-cancel]");
+  if (agrCancel){
+    agrCancel.addEventListener("click", function(){
+      if (!window.confirm("Cancel your agreement? Your access to the paid services will end, you will owe nothing, and any payment you made will be refunded.")) return;
+      agrPost("/staff/agreement/cancel", null, "Your agreement was cancelled. You owe nothing, and any payment you made will be refunded.");
+    });
+  }
+  var agrPrint = app.querySelector("[data-agr-print]");
+  if (agrPrint){ agrPrint.addEventListener("click", printAgreementCopy); }
+
   var profileForm = document.getElementById("profileForm");
   if (profileForm){
     profileForm.addEventListener("submit", function(e){
@@ -1783,6 +2266,7 @@ function bindEvents(){
       staffSelectedClientId = null;
       staffSelectedClientReports = null;
       staffSelectedClientError = null;
+      staffAuth = null; staffDrafts = null; staffDraftsError = null;
       render();
     });
   }
