@@ -417,9 +417,19 @@ function authPost(path, payload, okMsg){
   });
 }
 
+function loadPolicy(){
+  return api("/billing/policy").then(function(p){ state.policy = p; }).catch(function(){ state.policy = null; });
+}
+
+function fmtDay(iso){
+  try { return new Date(iso + (/Z|[+-]\d\d:?\d\d$/.test(iso) ? "" : "Z")).toLocaleString(undefined, { month: "long", day: "numeric", hour: "numeric", minute: "2-digit" }); }
+  catch (e) { return iso; }
+}
+
 function loadReportsList(){
   return Promise.all([
     api("/reports").then(function(list){ state.reports = list; }),
+    loadPolicy(),
     loadProfile(),
     loadAgreement(),
     loadAuthorization()
@@ -549,7 +559,14 @@ function agrDocBox(text){
 }
 
 function unlockButtonHtml(reportId){
-  return '<button data-checkout="' + esc(reportId) + '" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Unlock full breakdown") + '</button>';
+  var box = "";
+  if (state.policy && state.policy.refund_final){
+    box = '<label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;font-weight:400;cursor:pointer;margin:0 0 12px;">' +
+      '<input type="checkbox" id="refund_accept" style="width:18px;height:18px;margin-top:2px;flex:none;">' +
+      '<span>' + esc(state.policy.accept_text) + ' <a href="/static/refunds.html" target="_blank" rel="noopener">Refund Policy</a></span>' +
+      '</label>';
+  }
+  return box + '<button data-checkout="' + esc(reportId) + '" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Unlock full breakdown") + '</button>';
 }
 
 function unlockSection(reportId){
@@ -657,8 +674,19 @@ function doUpload(file){
 }
 
 function doCheckout(reportId){
-  clearBanner(); setBusy(true);
-  api("/billing/checkout/" + reportId, { method: "POST" }).then(function(res){
+  clearBanner();
+  var opts = { method: "POST" };
+  if (state.policy && state.policy.refund_final){
+    var cb = document.getElementById("refund_accept");
+    if (!cb || !cb.checked){
+      setBanner("error", "Please tick the box to confirm you understand the refund terms before unlocking.");
+      return;
+    }
+    opts.headers = { "Content-Type": "application/json" };
+    opts.body = JSON.stringify({ accept_refund_terms: true });
+  }
+  setBusy(true);
+  api("/billing/checkout/" + reportId, opts).then(function(res){
     if (res.checkout_url){
       // Real Stripe configured -- send them to hosted checkout.
       window.location.href = res.checkout_url;
@@ -1202,12 +1230,12 @@ function renderClientDashboard(){
     list = '<div class="empty">No reports yet. Upload one below to get started.</div>';
   } else {
     list = state.reports.map(function(r){
-      var badge = r.is_paid ? '<span class="badge paid">Unlocked</span>' : '<span class="badge unpaid">Free summary</span>';
+      var badge = r.is_paid ? '<span class="badge paid">Unlocked</span>' : (r.free_expired ? '<span class="badge unpaid">Preview ended</span>' : '<span class="badge unpaid">Free summary</span>');
       return '' +
       '<div class="report-item" data-open-report="' + esc(r.report_id) + '">' +
         '<div>' +
           '<div><strong>Report</strong> <span class="muted">' + esc(r.report_id.slice(0,8)) + '…</span></div>' +
-          '<div class="meta">' + r.tradeline_count + ' accounts · ' + r.violation_count + ' findings · ' + esc(r.status) + '</div>' +
+          '<div class="meta">' + ((r.free_expired && !r.is_paid) ? 'Free preview ended · unlock to view' : (r.tradeline_count + ' accounts · ' + r.violation_count + ' findings · ' + esc(r.status))) + '</div>' +
         '</div>' +
         badge +
       '</div>';
@@ -1401,12 +1429,21 @@ function renderReportDetailView(){
   html += '<div class="card">' +
     '<div class="row-wrap" style="justify-content:space-between;">' +
       '<h2 style="margin:0;">Report summary</h2>' +
-      (s.is_paid ? '<span class="badge paid">Unlocked</span>' : '<span class="badge unpaid">Free tier</span>') +
-    '</div>' +
-    '<div class="grid-2" style="margin-top:12px;">' +
+      (s.is_paid ? '<span class="badge paid">Unlocked</span>' : (s.free_expired ? '<span class="badge unpaid">Preview ended</span>' : '<span class="badge unpaid">Free tier</span>')) +
+    '</div>';
+  if (s.free_expired && !s.is_paid){
+    html += '<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:12px 0;font-size:14px;line-height:1.55;">' +
+      '<strong>Your free preview has ended.</strong> Your report is still saved. Unlock it to see your accounts, findings and dispute letters again.</div>';
+  } else {
+    if (s.free_expires_at && !s.is_paid){
+      html += '<div style="border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin:12px 0 0;font-size:14px;line-height:1.55;">' +
+        'Your free preview is available until <strong>' + esc(fmtDay(s.free_expires_at)) + '</strong>. After that the summary is hidden until you unlock your report.</div>';
+    }
+    html += '<div class="grid-2" style="margin-top:12px;">' +
       '<div><div class="muted">Accounts found</div><div style="font-size:22px;font-weight:700;">' + s.tradeline_count + '</div></div>' +
       '<div><div class="muted">Findings (disputable items)</div><div style="font-size:22px;font-weight:700;">' + s.violation_count + '</div></div>' +
     '</div>';
+  }
 
   if (Object.keys(s.violations_by_type || {}).length){
     html += '<div class="divider"></div><table><tr><th>Finding type</th><th>Count</th></tr>';

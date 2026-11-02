@@ -31,21 +31,21 @@ footer a{color:#6b7597;margin-right:14px}
 <nav class="nav"><a class="hide" href="/static/terms.html">Terms</a><a class="hide" href="/static/privacy.html">Privacy</a><a class="hide" href="/static/refunds.html">Refunds</a><a class="btn" href="/?org=blackbridge-office-329">Scan my report</a></nav></div></header>
 <section class="hero"><div class="wrap"><h1>Refund Policy</h1><p>When you can get your money back.</p></div></section>
 <main class="wrap"><div class="card">
-<p class="note">Last updated: October 23, 2026. We want you to be comfortable buying from us. Here is exactly when you can get your money back.</p>
+<p class="note" id="rp-note">Last updated: October 23, 2026. We want you to be comfortable buying from us. Here is exactly when you can get your money back.</p>
 
-<h2>1. Three-business-day refund</h2>
-<p>You can cancel your purchase and get a <strong>full refund within 3 business days</strong> of paying, for any reason. Business days are Monday through Friday, not counting federal holidays. Just email <a href="mailto:BlackBridgeoffice@Gmail.com">BlackBridgeoffice@Gmail.com</a> with the email address on your account and tell us you want to cancel.</p>
+<h2 id="rp-h1">1. Three-business-day refund</h2>
+<p id="rp-p1">You can cancel your purchase and get a <strong>full refund within 3 business days</strong> of paying, for any reason. Business days are Monday through Friday, not counting federal holidays. Just email <a href="mailto:BlackBridgeoffice@Gmail.com">BlackBridgeoffice@Gmail.com</a> with the email address on your account and tell us you want to cancel.</p>
 
 <h2>2. If something goes wrong on our side</h2>
-<p>You will get a full refund, at any time, if:</p>
-<ul>
+<p id="rp-p2">You will get a full refund, at any time, if:</p>
+<ul id="rp-ul2">
 <li>we are unable to read your report or finish your scan, or</li>
 <li>your full breakdown or letters fail to generate because of a problem with our Service that we cannot fix, or</li>
 <li>you were charged more than once for the same report.</li>
 </ul>
 
-<h2>3. After the first 3 business days</h2>
-<p>Once you have received your full breakdown and letters and the 3-business-day window has passed, the fee is generally not refundable, unless the law requires it or we agree to it. Please note that we cannot control what a credit bureau, creditor, or collector decides after you send a dispute. How a dispute turns out is not, on its own, a reason for a refund. We also never promise any particular result.</p>
+<h2 id="rp-h3">3. After the first 3 business days</h2>
+<p id="rp-p3">Once you have received your full breakdown and letters and the 3-business-day window has passed, the fee is generally not refundable, unless the law requires it or we agree to it. Please note that we cannot control what a credit bureau, creditor, or collector decides after you send a dispute. How a dispute turns out is not, on its own, a reason for a refund. We also never promise any particular result.</p>
 
 <h2>4. How refunds are paid</h2>
 <p>We refund to the same payment method you used. Once we approve a refund, we process it within 5 business days. Your bank or card company may take several more days to show it. If you paid by a direct method like Zelle or a bank transfer, we will send the refund back to the same account.</p>
@@ -61,4 +61,27 @@ footer a{color:#6b7597;margin-right:14px}
 </div></main>
 <footer><div class="wrap"><p style="margin:0 0 8px"><a href="/static/terms.html">Terms of Service</a> <a href="/static/privacy.html">Privacy Policy</a> <a href="/static/refunds.html">Refund Policy</a> <a href="/static/contact.html">Contact</a></p>
 <p style="margin:0">&copy; BlackBridge LLC. BlackBridge is a software tool, not a law firm, and is not affiliated with Equifax, Experian or TransUnion.</p></div></footer>
+<script>
+(function(){
+  fetch("/billing/policy").then(function(r){ return r.ok ? r.json() : null; }).then(function(p){
+    if (!p) return;
+    function $(id){ return document.getElementById(id); }
+    if (p.refund_final){
+      $("rp-note").textContent = "Last updated: November 2, 2026. Please read this before you buy. Your purchase is final once you unlock your results.";
+      $("rp-h1").textContent = "1. Purchases are final once unlocked";
+      $("rp-p1").innerHTML = "Your full breakdown and letters are delivered digitally the moment you unlock them. Because of that, your purchase is <strong>non-refundable once it is unlocked</strong>. Before you pay, you will be asked to tick a box confirming you understand this.";
+      $("rp-p2").textContent = "The one exception: you will get a full refund if we are unable to read your credit report.";
+      var ul = $("rp-ul2"); if (ul) ul.parentNode.removeChild(ul);
+      $("rp-h3").textContent = "3. Results are not guaranteed";
+      $("rp-p3").textContent = "We cannot control what a credit bureau, creditor, or collector decides after you send a dispute. How a dispute turns out is not a reason for a refund. We never promise any particular result.";
+    }
+    if (p.free_scan_days > 0){
+      var h = document.createElement("h2"); h.textContent = "Free preview";
+      var q = document.createElement("p");
+      q.textContent = "When you upload a report you can see a free summary for " + p.free_scan_days + " days. After that the summary is hidden until you unlock your report. Your report stays saved.";
+      var anchor = $("rp-h3"); anchor.parentNode.insertBefore(h, anchor); anchor.parentNode.insertBefore(q, anchor);
+    }
+  }).catch(function(){});
+})();
+</script>
 </body></html>
