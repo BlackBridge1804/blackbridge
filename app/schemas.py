@@ -92,6 +92,9 @@ class ReportSummaryOut(BaseModel):
     violation_count: int
     violations_by_type: dict
     is_paid: bool
+    # Free-preview expiry (policy.py). Both stay empty while FREE_SCAN_DAYS is 0.
+    free_expires_at: Optional[datetime] = None
+    free_expired: bool = False
 
 
 class RecommendationOut(BaseModel):

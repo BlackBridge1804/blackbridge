@@ -45,6 +45,16 @@ class Settings(BaseSettings):
     platform_org_slug: str = "blackbridge-office-329"
     platform_legal_name: str = "BlackBridge LLC"
 
+    # Free-preview expiry (see policy.py). 0 = off (the free summary never
+    # expires). Set FREE_SCAN_DAYS=3 in Render to make the free summary
+    # disappear 3 days after the report was first uploaded, unless it is paid.
+    free_scan_days: int = 0
+    # "Final after unlock" refund rule (see policy.py). OFF until the owner's
+    # attorney approves it. Set REFUND_FINAL_AFTER_UNLOCK=true in Render to turn
+    # it on. It only takes effect while AGREEMENT_REQUIRED is false, because the
+    # signed agreement promises a 3-business-day cancellation right.
+    refund_final_after_unlock: bool = False
+
     platform_admin_email: str = "you@example.com"
     platform_admin_password: str = "change-me"
 
