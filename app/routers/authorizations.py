@@ -326,3 +326,10 @@ def staff_filed(
         report.cfpb_complaint_outcome = "in_progress"
     db.commit()
     return {"ok": True, "filings": _filings(db, client.id)}
+
+
+# Client removal lives in its own file. Mounted here so main.py needs no change.
+# Keep these lines at the very bottom of the file.
+from . import client_removal as _client_removal  # noqa: E402
+
+router.include_router(_client_removal.router)

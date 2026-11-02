@@ -42,6 +42,7 @@ def list_org_clients(
     clients = (
         db.query(models.Client)
         .filter(models.Client.organization_id == resolved_org_id)
+        .filter(~models.Client.email.like("%@removed.invalid"))  # clients removed by staff
         .order_by(models.Client.created_at.desc())
         .all()
     )
