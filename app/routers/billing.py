@@ -10,21 +10,37 @@ the rest of the pipeline can be exercised without a Stripe account. Replace
 the dev-mode branch with a real webhook-only unlock before going live -- never
 trust a client-side "payment succeeded" call alone.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from typing import Optional
+
+from fastapi import APIRouter, Body, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import models
 from ..config import settings
 from ..database import get_db
 from ..deps import assert_same_org, require_client
+from .. import policy
 from .agreements import ensure_unlock_allowed
 
 router = APIRouter(prefix="/billing", tags=["billing"])
 
 
+class CheckoutIn(BaseModel):
+    accept_refund_terms: bool = False
+
+
+@router.get("/policy")
+def public_policy():
+    """Public: tells the website which refund / free-preview rules are switched on."""
+    return policy.public_policy()
+
+
 @router.post("/checkout/{report_id}")
 def create_checkout(
     report_id: str,
+    request: Request,
+    payload: Optional[CheckoutIn] = Body(None),
     db: Session = Depends(get_db),
     client: models.Client = Depends(require_client),
 ):
@@ -36,6 +52,18 @@ def create_checkout(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your report")
     # No-op unless the signed-agreement step is turned on in settings.
     ensure_unlock_allowed(db, client.id, for_client=True)
+
+    # When the "final after unlock" rule is on, the box must be ticked first and
+    # the tick is saved with the date, time and IP address.
+    if policy.refund_final_active():
+        if not (payload and payload.accept_refund_terms):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Please tick the box to confirm you understand the refund terms before unlocking.",
+            )
+        fwd = request.headers.get("x-forwarded-for", "")
+        ip = fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "")
+        policy.record_acceptance(db, report, ip)
 
     if not settings.stripe_secret_key and not settings.allow_dev_unlock:
         # No processor connected: payment is handled manually and the operator

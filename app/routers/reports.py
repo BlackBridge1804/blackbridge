@@ -9,6 +9,7 @@ from ..database import get_db
 from ..deps import assert_same_org, require_client
 from ..escalation import is_litigation_candidate
 from ..parsing.extractor import extract_from_text, extract_pdf_text, extract_with_llm
+from .. import policy
 from ..progress import compute_report_progress
 from ..rules.engine import scan_tradelines, summarize
 
@@ -169,6 +170,7 @@ def scan_report(
     db.commit()
 
     summary = summarize(findings)
+    win = policy.free_window(db, report)
     return schemas.ReportSummaryOut(
         report_id=report.id,
         status=report.status,
@@ -176,6 +178,8 @@ def scan_report(
         violation_count=summary["violation_count"],
         violations_by_type=summary["violations_by_type"],
         is_paid=report.is_paid,
+        free_expires_at=win["expires_at"],
+        free_expired=win["expired"],
     )
 
 
@@ -191,6 +195,10 @@ def _summarize_report(db: Session, report: models.Report) -> schemas.ReportSumma
         by_type[v.rule_id] = by_type.get(v.rule_id, 0) + 1
 
     tradeline_count = db.query(models.Tradeline).filter(models.Tradeline.report_id == report.id).count()
+    win = policy.free_window(db, report)
+    if win["expired"]:
+        # Free preview is over: hide the counts until the report is unlocked.
+        tradeline_count, violations, by_type = 0, [], {}
     return schemas.ReportSummaryOut(
         report_id=report.id,
         status=report.status,
@@ -198,6 +206,8 @@ def _summarize_report(db: Session, report: models.Report) -> schemas.ReportSumma
         violation_count=len(violations),
         violations_by_type=by_type,
         is_paid=report.is_paid,
+        free_expires_at=win["expires_at"],
+        free_expired=win["expired"],
     )
 
 
@@ -248,6 +258,8 @@ def get_progress(report_id: str, db: Session = Depends(get_db), client: models.C
     free tier, same as the summary counts, since it reveals stages/counts
     only, never letter content or violation detail."""
     report = _get_owned_report(db, report_id, client)
+    if policy.free_window(db, report)["expired"]:
+        raise HTTPException(status.HTTP_410_GONE, "The free preview for this report has ended. Unlock it to see your results.")
     return load_progress_for_report(db, report)
 
 

@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
+from .. import policy
 from ..database import get_db
 from ..deps import assert_same_org, require_client
 from ..scoring.recommendations import build_recommendations, summarize_recommendations
@@ -52,6 +53,8 @@ def get_recommendations_summary(
     report_id: str, db: Session = Depends(get_db), client: models.Client = Depends(require_client)
 ):
     report = _get_owned_report(db, report_id, client)
+    if policy.free_window(db, report)["expired"]:
+        raise HTTPException(status.HTTP_410_GONE, "The free preview for this report has ended. Unlock it to see your results.")
     recommendations = _load_recommendations(db, report)
     return summarize_recommendations(recommendations)
 

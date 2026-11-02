@@ -112,6 +112,8 @@ def mark_report_paid(
     # When the signed-agreement step is turned on, a report can only be unlocked
     # for a client with a signed agreement whose cancellation period has ended.
     ensure_unlock_allowed(db, report.client_id)
+    from .. import policy  # no-op unless the "final after unlock" rule is switched on
+    policy.require_acceptance_for_staff(db, report)
     report.is_paid = True
     db.commit()
     return {"report_id": report.id, "is_paid": True}
