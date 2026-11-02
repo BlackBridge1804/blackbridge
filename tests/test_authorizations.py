@@ -112,7 +112,7 @@ def test_sign_rules(world):
                      headers={**world["dfy"], "X-Forwarded-For": "198.51.100.7"})
     assert ok.status_code == 201 and ok.json()["status"] == "active"
     db = SessionLocal()
-    row = db.query(az.ClientAuthorization).first()
+    row = db.query(az.ClientAuthorization).filter_by(client_id=world["ids"]["c1"]).first()
     assert row.signed_ip == "198.51.100.7" and row.version == az.AUTH_VERSION and "not a power of attorney" in row.text
     db.close()
     again = client.post("/authorization/sign", json={"full_name": "Pat Client", "accept": True}, headers=world["dfy"])
@@ -133,7 +133,7 @@ def test_staff_drafts_filing_log_and_client_sees_it(world):
     mine = client.get("/authorization/current", headers=world["dfy"]).json()
     assert mine["filings"][0]["company"] == "Equifax"
     db = SessionLocal()
-    assert db.query(az.AuthorizationEvent).filter_by(action="viewed_drafts").count() == 1
+    assert db.query(az.AuthorizationEvent).filter_by(action="viewed_drafts", client_id=world["ids"]["c1"]).count() == 1
     rep = db.get(models.Report, world["ids"]["report"])
     assert rep.cfpb_complaint_filed_at is not None
     db.close()

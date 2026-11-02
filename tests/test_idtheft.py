@@ -105,7 +105,7 @@ def test_generate_needs_number_and_confirmation(world):
     r = client.post(_url(world, "idtheft/generate"), json={"tradeline_ids": [world["ids"]["tb"]], "confirm_not_mine": True}, headers=world["a"])
     assert r.status_code == 404
     db = SessionLocal()
-    assert db.query(idtheft.IdTheftAttestation).count() == 0  # nothing saved by the failures
+    assert db.query(idtheft.IdTheftAttestation).filter_by(report_id=world["ids"]["report"]).count() == 0  # nothing saved by the failures
     db.close()
 
 
@@ -115,7 +115,7 @@ def test_generate_many_saves_attestation_and_skips_duplicates(world):
     assert r.status_code == 201, r.text
     assert len(r.json()["created"]) == 2 and r.json()["skipped"] == []
     db = SessionLocal()
-    rows = db.query(idtheft.IdTheftAttestation).all()
+    rows = db.query(idtheft.IdTheftAttestation).filter_by(report_id=world["ids"]["report"]).all()
     assert len(rows) == 2
     assert {x.confirmed_ip for x in rows} == {"203.0.113.9"}
     assert rows[0].text_version == idtheft.ATTESTATION_VERSION and rows[0].report_number == "123456789"
@@ -142,7 +142,7 @@ def test_old_single_account_endpoint_now_requires_confirmation(world):
     r = client.post(url, json={"identity_theft_report_number": "bad!", "confirm_not_mine": True}, headers=world["a"])
     assert r.status_code == 400
     db = SessionLocal()
-    assert db.query(idtheft.IdTheftAttestation).count() == 3
+    assert db.query(idtheft.IdTheftAttestation).filter_by(report_id=world["ids"]["report"]).count() == 3
     db.close()
 
 
