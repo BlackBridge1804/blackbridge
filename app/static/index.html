@@ -1864,6 +1864,34 @@ function openStaffClient(clientId){
   });
 }
 
+function renderStaffRemoveClient(clientId, client){
+  if (!client || !staffAuth) return ""; // wait until the page has finished loading, so typing is not wiped
+  return '<div class="divider"></div><h3>Remove this client</h3>' +
+    '<p class="muted">Deletes their reports, accounts, letters and mailing address, and frees their email so they can sign up again. It cannot be undone. Their signed agreement and authorization records are kept for the legally required time. Only an organization admin can do this.</p>' +
+    '<div class="row-wrap">' +
+      '<input type="text" id="rm_email" placeholder="Type their email to confirm: ' + esc(client.email) + '" style="flex:1;min-width:220px;">' +
+      '<button type="button" class="secondary" data-staff-remove="' + esc(clientId) + '"' + (state.busy ? " disabled" : "") + '>Remove client</button>' +
+    '</div>';
+}
+
+function doStaffRemoveClient(clientId, email){
+  if (!email){ setBanner("error", "Type the client's email to confirm."); return; }
+  if (!window.confirm("Remove this client permanently? This cannot be undone.")) return;
+  clearBanner(); setBusy(true);
+  api("/authorization/staff/client/" + clientId + "/remove", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ confirm_email: email }),
+  }).then(function(res){
+    staffSelectedClientId = null; staffSelectedClientReports = null; staffSelectedClientError = null;
+    staffAuth = null; staffDrafts = null; staffDraftsError = null;
+    staffClients = null; staffClientsLoading = false;
+    setBusy(false);
+    setBanner("ok", "Client removed. " + res.reports_removed + " report(s) deleted. Their email can be used to sign up again.");
+    loadStaffClients();
+  }).catch(function(e){ setBusy(false); setBanner("error", e.message); render(); });
+}
+
 function renderStaffDoneForYou(clientId){
   var a = staffAuth;
   var h = '<div class="divider"></div><h3>Do-it-for-you service</h3>';
@@ -1940,6 +1968,7 @@ function renderStaffClientsCard(){
       }).join("");
     }
     html += renderStaffDoneForYou(staffSelectedClientId);
+    html += renderStaffRemoveClient(staffSelectedClientId, client);
     html += '</div>';
     return html;
   }
@@ -2199,6 +2228,12 @@ function bindEvents(){
     authRevoke.addEventListener("click", function(){
       if (!window.confirm("Cancel this authorization? Our staff will not be able to file anything new for you.")) return;
       authPost("/authorization/revoke", null, "Authorization cancelled.");
+    });
+  }
+  var staffRm = app.querySelector("[data-staff-remove]");
+  if (staffRm){
+    staffRm.addEventListener("click", function(){
+      doStaffRemoveClient(staffRm.getAttribute("data-staff-remove"), document.getElementById("rm_email").value.trim());
     });
   }
   var staffSvc = app.querySelector("[data-staff-service]");
