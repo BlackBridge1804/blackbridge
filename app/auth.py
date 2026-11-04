@@ -42,6 +42,37 @@ def decode_token(token: str) -> dict:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token")
 
 
+def _ensure_org_active(principal, db: Session) -> None:
+    """A locked organization (for example, license payments overdue) cannot use the app."""
+    org_id = getattr(principal, "organization_id", None)
+    if org_id is None:
+        return
+    from .models import Organization
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if org is None:
+        return
+    reason = None
+    if org.is_active is not False and settings.license_auto_lock:
+        try:
+            from .routers import licensing as _lic
+            overdue = _lic.overdue_reason(db, org.id)
+            if overdue:
+                _lic.lock_org(db, org, overdue, auto=True)
+        except HTTPException:
+            pass
+    if org.is_active is False:
+        try:
+            from .routers import licensing as _lic
+            reason = _lic.lock_reason(db, org.id)
+        except Exception:
+            reason = None
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is paused" + (f": {reason}" if reason else ".")
+            + " Please contact BlackBridge at BlackBridgeoffice@Gmail.com.",
+        )
+
+
 def get_current_principal(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     """
     Returns either a User (staff) or a Client (end consumer), decided by token type.
@@ -63,6 +94,7 @@ def get_current_principal(token: str = Depends(oauth2_scheme), db: Session = Dep
 
     if principal is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account not found or inactive")
+    _ensure_org_active(principal, db)
     return principal
 
 
