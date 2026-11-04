@@ -284,6 +284,7 @@
       <h2>Good questions, straight answers</h2>
     </div>
     <div class="faq" style="margin-top:36px;">
+      <details><summary>How much does it cost?</summary><p id="priceFaq">Uploading your report and seeing your summary is free. The full breakdown and dispute letters are a one-time fee for each report, or one fee for all three bureaus. You will see the exact price before you pay.</p></details>
       <details><summary>Is the scan really free?</summary><p>Yes. Uploading your report and seeing your summary costs nothing. The full breakdown and dispute letters unlock after a one-time report fee.</p></details>
       <details><summary>Where do I get my credit report?</summary><p>You can get free reports from Equifax, Experian and TransUnion at annualcreditreport.com, the site federal law set up for this. Save the report as a PDF and upload it here.</p></details>
       <details><summary>Will you remove items from my credit report?</summary><p>No one can promise that. Bureaus and creditors decide what changes after you dispute. We help you find items worth a closer look and prepare your letters. What happens next is up to them.</p></details>
@@ -318,6 +319,12 @@
 
 <script>
   document.querySelectorAll("[data-app]").forEach(function(a){ a.setAttribute("href", APP_LINK); });
+  fetch("/billing/policy").then(function(r){ return r.ok ? r.json() : null; }).then(function(p){
+    if (!p || !p.price_report) return;
+    var t = "Uploading your report and seeing your summary is free. The full breakdown and dispute letters are $" + p.price_report + " per report, or $" + p.price_bundle + " for all three bureaus (one-time fees, not a subscription).";
+    if (p.free_scan_days > 0) t += " Your free summary stays available for " + p.free_scan_days + " days after you upload.";
+    var el = document.getElementById("priceFaq"); if (el) el.textContent = t;
+  }).catch(function(){});
 </script>
 </body>
 </html>

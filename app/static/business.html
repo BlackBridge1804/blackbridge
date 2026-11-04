@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About this business</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#0f1630;background:#f6f8fd;line-height:1.6}
+.wrap{max-width:760px;margin:0 auto;padding:0 18px}
+header{background:#fff;border-bottom:1px solid #e3e8f4}
+header .wrap{display:flex;align-items:center;gap:12px;height:68px}
+header img{height:36px;max-width:150px;object-fit:contain}
+header b{font-size:19px}
+.card{background:#fff;border:1px solid #e3e8f4;border-radius:16px;padding:24px;margin:20px 0}
+h2{font-size:19px;margin:0 0 8px}
+p{color:#3d4770;font-size:15.5px;margin:0 0 10px;white-space:pre-wrap}
+a{color:var(--c,#2f6fed)}
+.btn{display:inline-block;background:var(--c,#2f6fed);color:#fff!important;font-weight:700;border-radius:10px;padding:10px 16px;text-decoration:none}
+footer{padding:10px 0 40px;color:#6b7597;font-size:13px}
+</style></head><body>
+<header><div class="wrap" id="hd"><b>Loading…</b></div></header>
+<main class="wrap" id="root"></main>
+<footer><div class="wrap"><p>Powered by BlackBridge software. This business is independently operated. BlackBridge software is a tool, not a law firm, and does not give legal advice. Results are never guaranteed.</p>
+<p><a href="/static/terms.html">Terms of Service</a> · <a href="/static/privacy.html">Privacy Policy</a></p></div></footer>
+<script>
+(function(){
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  var slug = new URLSearchParams(location.search).get("org") || "";
+  fetch("/org-settings/public/" + encodeURIComponent(slug)).then(function(r){ if (!r.ok) throw 0; return r.json(); }).then(function(b){
+    if (b.color && /^#[0-9a-fA-F]{6}$/.test(b.color)) document.documentElement.style.setProperty("--c", b.color);
+    document.title = b.name + " | Contact and refund policy";
+    document.getElementById("hd").innerHTML = (b.logo && /^data:image\/(png|jpeg|webp);base64,/.test(b.logo) ? '<img src="' + b.logo + '" alt="">' : '') + '<b>' + esc(b.name) + '</b>';
+    var c = b.contact || {}, h = '<div class="card"><h2>Contact us</h2>';
+    if (c.phone) h += '<p>Phone: <a href="tel:' + esc(c.phone) + '">' + esc(c.phone) + '</a></p>';
+    if (c.email) h += '<p>Email: <a href="mailto:' + esc(c.email) + '">' + esc(c.email) + '</a></p>';
+    if (c.address) h += '<p>Address: ' + esc(c.address) + '</p>';
+    if (c.website) h += '<p>Website: <a href="' + esc(c.website) + '" target="_blank" rel="noopener">' + esc(c.website) + '</a></p>';
+    if (c.hours) h += '<p>Support hours: ' + esc(c.hours) + '</p>';
+    if (!c.phone && !c.email && !c.address && !c.website) h += '<p>Contact details have not been added yet.</p>';
+    h += '</div><div class="card" id="refund"><h2>Refund policy</h2><p>' + esc(b.refund_policy) + '</p></div>';
+    h += '<p><a class="btn" href="/?org=' + encodeURIComponent(b.slug) + '">Go to ' + esc(b.name) + '</a></p>';
+    document.getElementById("root").innerHTML = h;
+  }).catch(function(){ document.getElementById("hd").innerHTML = "<b>Not found</b>"; document.getElementById("root").innerHTML = '<div class="card"><p>We could not find that business.</p></div>'; });
+})();
+</script></body></html>

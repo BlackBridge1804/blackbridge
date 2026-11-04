@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Become a BlackBridge Licensee</title><meta name="description" content="License the BlackBridge credit report scanning and dispute letter software under your own name.">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#0f1630;background:#f6f8fd;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:#2f6fed}
+.top{background:linear-gradient(160deg,#0a1230,#111b45);color:#fff}
+.wrap{max-width:900px;margin:0 auto;padding:0 18px}
+.top .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{color:#fff;font-weight:800;font-size:19px;text-decoration:none}
+.hero{background:linear-gradient(160deg,#0a1230,#111b45);color:#fff;padding:26px 0 56px}
+.hero h1{margin:0 0 8px;font-size:clamp(26px,5vw,38px);letter-spacing:-.6px}
+.hero p{margin:0;color:#b4c1ef;max-width:640px}
+.card{background:#fff;border:1px solid #e3e8f4;border-radius:16px;padding:24px;margin:0 0 18px;box-shadow:0 8px 24px rgba(15,22,48,.05)}
+main{margin-top:-32px;padding-bottom:40px}
+h2{font-size:20px;margin:0 0 8px}
+h3{font-size:16px;margin:16px 0 6px}
+p,li{color:#3d4770;font-size:15.5px}
+ul{padding-left:20px}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.plan{border:2px solid #e3e8f4;border-radius:14px;padding:16px;cursor:pointer;background:#f9fbff;display:block}
+.plan.sel{border-color:#2f6fed;background:#eef3ff}
+.plan input{margin-right:6px}
+.plan b{display:block;font-size:16px}
+.plan .pl{font-size:19px;font-weight:800;margin:6px 0;color:#0f1630}
+.plan .tt{font-size:13.5px;color:#4a5578}
+.box{max-height:260px;overflow:auto;white-space:pre-wrap;border:1px solid #dfe5f3;border-radius:12px;padding:14px;font-size:13.5px;line-height:1.55;background:#fafbfe;color:#2a3354}
+label.f{display:block;font-weight:600;font-size:14px;margin:12px 0 4px}
+input[type=text],input[type=email],input[type=tel]{width:100%;padding:11px 12px;border:1px solid #cfd7ea;border-radius:10px;font-size:15px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+button{background:#2f6fed;color:#fff;border:0;border-radius:10px;padding:12px 18px;font-weight:700;font-size:15px;cursor:pointer;width:100%;margin-top:14px}
+button:disabled{opacity:.5;cursor:not-allowed}
+.chk{display:flex;gap:10px;align-items:flex-start;font-size:14px;margin-top:14px}
+.chk input{width:18px;height:18px;margin-top:3px;flex:none}
+.msg{padding:12px 14px;border-radius:10px;margin:12px 0;font-size:14.5px}
+.msg.err{background:#fbeaea;color:#8c2a2a}.msg.ok{background:#e6f6ef;color:#14664a}
+.note{background:#eef3ff;border:1px solid #cdd9fb;border-radius:12px;padding:12px 14px;color:#33406f;font-size:14.5px}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14.5px}
+td,th{padding:8px 6px;border-top:1px solid #e3e8f4;text-align:left}
+.paid{color:#14664a;font-weight:700}
+footer{padding:6px 0 40px;color:#6b7597;font-size:13px}
+@media(max-width:700px){.plans,.row2{grid-template-columns:1fr}}
+</style></head><body>
+<header class="top"><div class="wrap"><a class="logo" href="/static/landing.html">BlackBridge</a><a href="/static/landing.html" style="color:#c9d3f5;font-size:14px;text-decoration:none">Back to main site</a></div></header>
+<section class="hero"><div class="wrap"><h1>License the BlackBridge software under your own name</h1><p>Your own login, client sign-up link, logo and colors, and your own client list. Read the disclosure below first, then apply.</p></div></section>
+<main class="wrap" id="root"><div class="card">Loading…</div></main>
+<footer><div class="wrap">&copy; BlackBridge LLC. BlackBridge is a software tool, not a law firm. No income, client count or result is promised or implied.</div></footer>
+<script>
+(function(){
+  var root = document.getElementById("root"), info = null, selected = "buyout";
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  function d(iso){ try { return new Date(iso).toLocaleString(undefined,{month:"long",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"}); } catch(e){ return iso; } }
+  function money(n){ return "$" + Number(n).toLocaleString(); }
+  function call(path, opts){
+    return fetch(path, opts).then(function(r){ return r.json().then(function(b){ if (!r.ok){ var e = new Error(typeof b.detail === "string" ? b.detail : "Something went wrong."); e.status = r.status; throw e; } return b; }); });
+  }
+  function token(){ var m = /[#&]t=([^&]+)/.exec(location.hash); return m ? decodeURIComponent(m[1]) : ""; }
+
+  function showApply(){
+    var h = '<div class="card"><h2>What a license is</h2>' +
+      '<p>You are buying a <strong>license to use</strong> our hosted software under your own name. You are not buying the code, the servers, or any ownership in BlackBridge LLC. The license lasts while you follow the license terms and are current on payments.</p>' +
+      '<h3>What you get</h3><ul><li>Your own login and your own client sign-up link</li><li>Your logo, colors, business name and payment instructions</li><li>The scanning, findings and dispute letter tools for your clients</li></ul>' +
+      '<h3>What we do not promise</h3><div class="note">' + esc(info.no_promise) + '</div></div>';
+    h += '<div class="card"><h2>Choose a plan</h2><div class="plans">';
+    info.plans.forEach(function(p){
+      h += '<label class="plan' + (p.id === selected ? " sel" : "") + '"><b><input type="radio" name="plan" value="' + esc(p.id) + '"' + (p.id === selected ? " checked" : "") + '>' + esc(p.name) + '</b><div class="pl">' + esc(p.price_line) + '</div><div class="tt">' + esc(p.terms) + '</div></label>';
+    });
+    h += '</div><p style="margin-top:12px;font-size:14px">Payments are made by Zelle, ACH or wire. You will get payment instructions after you sign.</p></div>';
+    h += '<div class="card"><h2>' + esc(info.disclosure_title) + '</h2><p>Please read all of this before you apply.</p><div class="box">' + esc(info.disclosure_text) + '</div></div>';
+    h += '<div class="card"><h2>Apply</h2><p>Applying does not commit you to anything. You will have ' + info.wait_days + ' days to read the disclosure before you can sign.</p><form id="f">' +
+      '<div class="row2"><div><label class="f">Business name</label><input type="text" id="bn" required maxlength="120"></div><div><label class="f">Your full name</label><input type="text" id="cn" required maxlength="120"></div></div>' +
+      '<div class="row2"><div><label class="f">Email</label><input type="email" id="em" required></div><div><label class="f">Phone</label><input type="tel" id="ph" maxlength="40"></div></div>' +
+      '<label class="chk"><input type="checkbox" id="ack"><span>I received and read the licensing disclosure above.</span></label>' +
+      '<div id="m"></div><button type="submit" id="go">Apply</button></form></div>';
+    root.innerHTML = h;
+    root.querySelectorAll("input[name=plan]").forEach(function(r){ r.addEventListener("change", function(){ selected = r.value; root.querySelectorAll(".plan").forEach(function(l){ l.classList.toggle("sel", l.querySelector("input").checked); }); }); });
+    document.getElementById("f").addEventListener("submit", function(e){
+      e.preventDefault();
+      var m = document.getElementById("m"), go = document.getElementById("go");
+      if (!document.getElementById("ack").checked){ m.innerHTML = '<div class="msg err">Please confirm you received and read the licensing disclosure.</div>'; return; }
+      go.disabled = true;
+      call("/license/apply", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({
+        plan: selected, business_name: document.getElementById("bn").value, contact_name: document.getElementById("cn").value,
+        email: document.getElementById("em").value, phone: document.getElementById("ph").value, desired_slug: document.getElementById("bn").value, received_disclosure: true }) })
+      .then(function(r){ location.hash = "t=" + encodeURIComponent(r.token); route(); })
+      .catch(function(err){ go.disabled = false; m.innerHTML = '<div class="msg err">' + esc(err.message) + '</div>'; });
+    });
+  }
+
+  function showStatus(tok){
+    call("/license/status/" + encodeURIComponent(tok)).then(function(s){
+      var link = location.origin + "/static/license.html#t=" + tok;
+      var h = '<div class="card"><h2>Your application</h2><p><strong>' + esc(s.business_name) + '</strong> · ' + esc(s.plan_name) + '</p>' +
+        '<div class="note"><strong>Save this page.</strong> This private link is the only way back to your application: <br><code style="word-break:break-all">' + esc(link) + '</code></div>';
+      if (!s.signed){
+        h += '<p style="margin-top:12px">You received the licensing disclosure on <strong>' + esc(d(s.disclosure_furnished_at)) + '</strong>. ' +
+          (s.can_sign ? 'The waiting period is over. You may sign below.' : 'You can sign on or after <strong>' + esc(d(s.sign_after)) + '</strong>. Until then, please read everything and talk to an advisor.') + '</p></div>';
+        h += '<div class="card"><h2>' + 'Disclosure' + '</h2><div class="box">' + esc(s.disclosure_text) + '</div></div>';
+        h += '<div class="card"><h2>License terms</h2><div class="box">' + esc(s.terms_text) + '</div>';
+        if (s.can_sign){
+          h += '<form id="sf"><label class="f">Type your full name to sign (' + esc(s.contact_name) + ')</label><input type="text" id="sn" required maxlength="120">' +
+            '<label class="chk"><input type="checkbox" id="sa"><span>I have read the disclosure and the license terms and I agree to them.</span></label><div id="m"></div><button type="submit">Sign license terms</button></form>';
+        } else {
+          h += '<p style="margin-top:12px"><em>Signing opens after the waiting period.</em></p>';
+        }
+        h += '</div>';
+      } else {
+        h += '<p style="margin-top:12px">Signed on <strong>' + esc(d(s.signed_at)) + '</strong>. Status: <strong>' + esc(s.status) + '</strong>.</p></div>';
+        h += '<div class="card"><h2>Your payments</h2><table><tr><th>Payment</th><th>Amount</th><th>Status</th></tr>';
+        s.payments.forEach(function(p){
+          h += '<tr><td>' + esc(p.label) + '</td><td>' + money(p.amount) + '</td><td>' + (p.paid_at ? '<span class="paid">received</span>' : (p.due_date ? 'due ' + esc(new Date(p.due_date).toLocaleDateString()) + (p.overdue ? ' (overdue)' : '') : 'after delivery')) + '</td></tr>';
+        });
+        h += '</table>';
+        var i = s.instructions;
+        if (i){
+          h += '<h3>How to pay</h3><p>' + (i.zelle_contact ? 'Zelle to <strong>' + esc(i.zelle_contact) + '</strong>' + (i.zelle_name ? ' (' + esc(i.zelle_name) + ')' : '') + '. ' : '') + esc(i.memo) + '</p><p>' + esc(i.other) + '</p>';
+          if (i.zelle_name && i.zelle_name.toLowerCase().indexOf("blackbridge") === -1) h += '<div class="note">Zelle will show the name ' + esc(i.zelle_name) + ', a sister company of BlackBridge LLC and our payment partner. It is the same business, just a different name on the payment.</div>';
+        }
+        h += '<p style="margin-top:12px">After your first payment is received we will create your account and send you your login details.</p>';
+        if (s.client_link) h += '<div class="msg ok">Your account is ready. Your client sign-up link: <strong>' + esc(location.origin + s.client_link) + '</strong></div>';
+        h += '</div><div class="card"><h2>Your signed license terms</h2><div class="box">' + esc(s.terms_text) + '</div></div>';
+      }
+      root.innerHTML = h;
+      var sf = document.getElementById("sf");
+      if (sf) sf.addEventListener("submit", function(e){
+        e.preventDefault();
+        var m = document.getElementById("m");
+        call("/license/sign/" + encodeURIComponent(tok), { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ full_name: document.getElementById("sn").value, accept: document.getElementById("sa").checked }) })
+        .then(function(){ showStatus(tok); }).catch(function(err){ m.innerHTML = '<div class="msg err">' + esc(err.message) + '</div>'; });
+      });
+    }).catch(function(err){ root.innerHTML = '<div class="card"><div class="msg err">' + esc(err.message) + '</div><p><a href="/static/license.html">Start over</a></p></div>'; });
+  }
+
+  function route(){ var t = token(); if (t) showStatus(t); else if (info) showApply(); }
+  call("/license/info").then(function(i){ info = i; route(); }).catch(function(){ root.innerHTML = '<div class="card"><div class="msg err">This page could not load. Please try again in a minute.</div></div>'; });
+  window.addEventListener("hashchange", route);
+})();
+</script>
+</body></html>

@@ -209,6 +209,7 @@
 </header>
 <main class="container" id="app"></main>
 <footer>
+  <p class="muted" id="bizFooter"></p>
   <p class="muted">Not legal advice. Results depend on your specific credit history and are never guaranteed.</p>
 </footer>
 <script>
@@ -357,6 +358,9 @@ function clearBanner(){ state.banner = null; }
 function setBusy(b){ state.busy = b; render(); }
 
 function logout(){
+  licState.loaded = false; licState.loading = false; licState.settings = null; licState.apps = null; licState.team = null; licState.summary = null; licState.orgs = null; licState.mine = null;
+  licState.draft = null; licState.logoDraft = undefined; licState.created = null; licState.msg = null;
+  bld.me = undefined; bld.ov = undefined; bld.settings = undefined; bld.cl = null; bld.clLoading = null; bld.msg = null; bld.err = null; bld.accept = false;
   saveToken(null);
   state.view = "auth";
   state.reports = [];
@@ -418,7 +422,7 @@ function authPost(path, payload, okMsg){
 }
 
 function loadPolicy(){
-  return api("/billing/policy").then(function(p){ state.policy = p; }).catch(function(){ state.policy = null; });
+  return api("/billing/policy/me").then(function(p){ state.policy = p; if (p && p.brand) applyBrand(p.brand); }).catch(function(){ state.policy = null; });
 }
 
 function fmtDay(iso){
@@ -558,15 +562,38 @@ function agrDocBox(text){
   return '<div style="max-height:260px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13px;line-height:1.55;white-space:pre-wrap;background:rgba(127,127,127,.06);">' + esc(text) + '</div>';
 }
 
+function payCardHtml(){
+  var pay = state.policy && state.policy.pay;
+  if (!pay) return "";
+  var h = '<div style="border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin:0 0 14px;font-size:14px;line-height:1.6;">' +
+    '<strong style="display:block;margin-bottom:6px;">How to pay (Zelle)</strong>' +
+    '<div>One report: <strong>$' + esc(pay.price_report) + '</strong> &nbsp;·&nbsp; All three bureaus: <strong>$' + esc(pay.price_bundle) + '</strong></div>' +
+    '<ol style="margin:8px 0 8px 18px;padding:0;">' +
+      '<li>Tick the box below (if shown) and press the button. This records your agreement.</li>' +
+      (pay.contact ? '<li>Send your payment with Zelle to <strong>' + esc(pay.contact) + '</strong>' + (pay.name ? ' (' + esc(pay.name) + ')' : '') + '.</li>' : '<li>Pay using the instructions below.</li>') +
+      '<li>Put your sign-up email, <strong>' + esc(pay.memo) + '</strong>, in the Zelle memo so we can match your payment.</li>' +
+      '<li>We unlock your report as soon as we confirm your payment.</li>' +
+    '</ol>' +
+    (pay.instructions ? '<div style="white-space:pre-wrap;margin:6px 0;"><strong>Other ways to pay:</strong> ' + esc(pay.instructions) + '</div>' : '') +
+    (pay.note ? '<div class="muted" style="font-size:12.5px;">' + esc(pay.note) + '</div>' : '') +
+    '</div>';
+  return h;
+}
+
+function refundLink(){
+  var b = state.policy && state.policy.brand;
+  return (b && b.slug && !b.is_platform) ? "/static/business.html?org=" + encodeURIComponent(b.slug) + "#refund" : "/static/refunds.html";
+}
+
 function unlockButtonHtml(reportId){
-  var box = "";
+  var box = payCardHtml();
   if (state.policy && state.policy.refund_final){
-    box = '<label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;font-weight:400;cursor:pointer;margin:0 0 12px;">' +
+    box += '<label style="display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.5;font-weight:400;cursor:pointer;margin:0 0 12px;">' +
       '<input type="checkbox" id="refund_accept" style="width:18px;height:18px;margin-top:2px;flex:none;">' +
-      '<span>' + esc(state.policy.accept_text) + ' <a href="/static/refunds.html" target="_blank" rel="noopener">Refund Policy</a></span>' +
+      '<span>' + esc(state.policy.accept_text) + ' <a href="' + esc(refundLink()) + '" target="_blank" rel="noopener">Refund Policy</a></span>' +
       '</label>';
   }
-  return box + '<button data-checkout="' + esc(reportId) + '" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Unlock full breakdown") + '</button>';
+  return box + '<button data-checkout="' + esc(reportId) + '" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : ((state.policy && state.policy.pay) ? "Request unlock" : "Unlock full breakdown")) + '</button>';
 }
 
 function unlockSection(reportId){
@@ -1149,6 +1176,8 @@ function render(){
 
   app.innerHTML = html;
   bindEvents();
+  licAfterRender(app);
+  bldAfterRender(app);
 
   if (chatOpen){
     var chatBody = document.getElementById("chatBody");
@@ -1258,6 +1287,7 @@ function renderClientDashboard(){
     '<h2>Your reports</h2>' +
     list +
   '</div>' +
+  renderBuilderCard() +
   '<div class="card">' +
     '<h3 style="margin-bottom:6px;">No credit file yet?</h3>' +
     '<p>You don’t need a report to get started -- see the general path most people use to open their first account and start building history.</p>' +
@@ -2005,6 +2035,7 @@ function renderStaffClientsCard(){
       }).join("");
     }
     html += renderStaffDoneForYou(staffSelectedClientId);
+    html += renderStaffBuilder(staffSelectedClientId);
     html += renderStaffRemoveClient(staffSelectedClientId, client);
     html += '</div>';
     return html;
@@ -2079,9 +2110,10 @@ function renderPartnerOffersAdminCard(){
 }
 
 function renderAdminView(){
-  var html = renderStaffClientsCard();
+  var html = renderMyLicenseCard() + renderChecklistCard() + renderBusinessSettingsCard() + renderTeamCard() + renderLicensingCard() + renderBuilderWorklistCard() + renderStaffClientsCard() + renderBuilderSettingsCard();
 
-  html += '<div class="card"><h2>Create a licensee organization</h2>' +
+  var platformOnly = '';
+  platformOnly += '<div class="card"><h2>Create a licensee organization</h2>' +
     '<p>Each organization gets its own branded signup link: share <code>' + location.origin + '/?org=&lt;slug&gt;</code> with that licensee’s customers.</p>' +
     '<form id="createOrgForm" class="grid-2">' +
       '<div class="field"><label>Organization name</label><input type="text" id="org_name" required></div>' +
@@ -2090,7 +2122,7 @@ function renderAdminView(){
     '<button id="createOrgSubmit" class="block"' + (state.busy ? " disabled" : "") + '>Create organization</button>' +
   '</div>';
 
-  html += '<div class="card"><h2>Create a staff login for an organization</h2>' +
+  platformOnly += '<div class="card"><h2>Create a staff login for an organization</h2>' +
     '<p>Gives a licensee their first login for this operator console (tracking their own clients’ progress). Use the organization’s slug from when you created it.</p>' +
     '<form id="createStaffForm" class="grid-2">' +
       '<div class="field"><label>Organization slug</label><input type="text" id="staff_org_slug" required></div>' +
@@ -2101,8 +2133,13 @@ function renderAdminView(){
     '<button id="createStaffSubmit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Create staff login</button>' +
   '</div>';
 
-  html += renderPartnerOffersAdminCard();
+  platformOnly += renderPartnerOffersAdminCard();
 
+  if (licState.loaded && Array.isArray(licState.apps)) html += platformOnly;
+
+  html += renderPasswordCard();
+
+  if (licState.loaded && Array.isArray(licState.apps)){
   html += '<div class="card"><h2>Outcome analytics</h2>';
   if (adminAnalyticsError){
     html += '<div class="empty">' + esc(adminAnalyticsError) + '</div>';
@@ -2123,6 +2160,7 @@ function renderAdminView(){
     }
   }
   html += '</div>';
+  }
   return html;
 }
 
@@ -2485,6 +2523,425 @@ function bindEvents(){
 }
 
 /* ---------- boot ---------- */
+/* ================= licensee branding, business settings, licensing ================= */
+var licState = { summary: null, orgs: null, mine: null, team: null, loaded: false, loading: false, settings: null, apps: null, draft: null, logoDraft: undefined, created: null, msg: null };
+
+function shade(hex, pct){
+  var n = parseInt(hex.slice(1), 16), r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  function f(c){ return Math.max(0, Math.min(255, Math.round(c * (1 + pct)))); }
+  return "#" + [f(r), f(g), f(b)].map(function(c){ return ("0" + c.toString(16)).slice(-2); }).join("");
+}
+
+function applyBrand(b){
+  if (!b) return;
+  try {
+    var nm = document.getElementById("brandName");
+    if (nm && b.name) nm.textContent = b.name;
+    if (b.name) document.title = b.name;
+    var dot = document.querySelector(".brand .dot");
+    var img = document.getElementById("brandLogo");
+    if (b.logo && /^data:image\/(png|jpeg|webp);base64,/.test(b.logo)){
+      if (!img && dot){
+        img = document.createElement("img");
+        img.id = "brandLogo"; img.alt = "";
+        img.style.cssText = "height:28px;max-width:130px;object-fit:contain;border-radius:6px;";
+        dot.parentNode.insertBefore(img, dot);
+      }
+      if (img) img.src = b.logo;
+      if (dot) dot.style.display = "none";
+    } else {
+      if (img) img.parentNode.removeChild(img);
+      if (dot) dot.style.display = "";
+    }
+    var bf = document.getElementById("bizFooter");
+    if (bf && b.slug && !b.is_platform){
+      bf.innerHTML = '<a href="/static/business.html?org=' + encodeURIComponent(b.slug) + '" target="_blank" rel="noopener">About ' + esc(b.name || "this business") + ': contact info and refund policy</a>';
+    }
+    if (b.color && /^#[0-9a-fA-F]{6}$/.test(b.color)){
+      document.documentElement.style.setProperty("--brand", b.color);
+      document.documentElement.style.setProperty("--brand-dark", shade(b.color, -0.2));
+      var tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.setAttribute("content", b.color);
+    }
+  } catch (e) {}
+}
+
+function licLoad(){
+  if (licState.loaded || licState.loading) return;
+  licState.loading = true;
+  Promise.all([
+    api("/org-settings/me").then(function(s){ licState.settings = s; applyBrand({ name: s.display_name || s.organization_name, logo: s.logo || null, color: s.primary_color || null }); }).catch(function(){ licState.settings = false; }),
+    api("/license/admin/applications").then(function(a){ licState.apps = a; return Promise.all([
+      api("/license/admin/summary").then(function(x){ licState.summary = x; }).catch(function(){}),
+      api("/license/admin/organizations").then(function(x){ licState.orgs = x; }).catch(function(){})
+    ]); }).catch(function(){ licState.apps = false; }),
+    api("/license/mine").then(function(m){ licState.mine = m; }).catch(function(){ licState.mine = null; }),
+    api("/org-settings/team").then(function(t){ licState.team = t; }).catch(function(){ licState.team = false; })
+  ]).then(function(){ licState.loaded = true; licState.loading = false; render(); });
+}
+
+function licReload(msg){
+  licState.loaded = false; licState.loading = false; licState.msg = msg || null;
+  licLoad();
+}
+
+function fld(label, id, val, extra){
+  return '<div class="field"' + (extra && extra.wide ? ' style="grid-column:1/-1;"' : '') + '><label>' + label + '</label>' +
+    '<input type="text" id="' + id + '" value="' + esc(val || "") + '"' + (extra && extra.dis ? " disabled" : "") + (extra && extra.ph ? ' placeholder="' + esc(extra.ph) + '"' : "") + '></div>';
+}
+
+function renderBusinessSettingsCard(){
+  var s = licState.settings;
+  if (s === null) return '<div class="card"><h2>Business settings</h2><div class="empty">Loading…</div></div>';
+  if (!s) return "";
+  var d = licState.draft || {};
+  function v(k){ return d[k] !== undefined ? d[k] : (s[k] || ""); }
+  var logo = licState.logoDraft !== undefined ? licState.logoDraft : s.logo;
+  var envNote = s.uses_environment_for_payments;
+  var dis = !s.can_edit;
+  var h = '<div class="card"><h2>Business settings</h2>' +
+    '<p>This is what your clients see: your name, logo and colors, and how they pay you. Your client sign-up link: <code>' + esc(location.origin + s.client_link) + '</code></p>' +
+    (licState.msg ? '<div class="banner ok">' + esc(licState.msg) + '</div>' : '') +
+    (dis ? '<p class="muted">Only an organization admin can change these settings.</p>' : '') +
+    '<div class="grid-2">' +
+      fld("Business name shown to clients", "bs_display_name", v("display_name"), { dis: dis }) +
+      '<div class="field"><label>Main color</label><div class="row-wrap" style="gap:8px;"><input type="color" id="bs_color_pick" value="' + esc(v("primary_color") || "#2f6fed") + '"' + (dis ? " disabled" : "") + ' style="width:48px;height:38px;padding:2px;">' +
+        '<input type="text" id="bs_primary_color" value="' + esc(v("primary_color")) + '" placeholder="#2F6FED" style="flex:1;"' + (dis ? " disabled" : "") + '></div></div>' +
+      '<div class="field" style="grid-column:1/-1;"><label>Logo (PNG, JPG or WEBP)</label>' +
+        (logo ? '<div style="margin:6px 0;"><img src="' + esc(logo) + '" alt="Logo preview" style="max-height:60px;max-width:220px;object-fit:contain;border:1px solid var(--border);border-radius:8px;padding:6px;background:#fff;"></div>' : '<div class="muted" style="margin:4px 0;">No logo yet.</div>') +
+        (dis ? "" : '<input type="file" id="bs_logo_file" accept="image/png,image/jpeg,image/webp"> <button type="button" class="secondary" id="bs_logo_clear">Remove logo</button>') + '</div>' +
+      fld("Business address (printed in your agreement)", "bs_business_address", v("business_address"), { dis: dis || envNote, wide: true, ph: "Street, city, state, ZIP" }) +
+      fld("Business phone", "bs_phone", v("phone"), { dis: dis }) +
+      fld("Business email", "bs_email", v("email"), { dis: dis }) +
+      fld("Website (optional)", "bs_website", v("website"), { dis: dis, ph: "https://" }) +
+      fld("Support hours (optional)", "bs_support_hours", v("support_hours"), { dis: dis, ph: "Mon-Fri 9am-5pm ET" }) +
+    '</div>' +
+    '<p class="muted" style="margin-top:8px;">Your public contact page, shown to your clients: <a href="' + esc(s.public_page) + '" target="_blank" rel="noopener">' + esc(location.origin + s.public_page) + '</a></p>';
+  if (envNote){
+    h += '<p class="muted" style="margin-top:12px;">Payment instructions, prices and address for the main site are set in Render, so they are not edited here.</p>';
+  } else {
+    h += '<div class="divider"></div><h3>Your refund policy</h3>' +
+      '<p class="muted">Your clients tick a box agreeing to this before they request an unlock. Ask your own attorney which policy is right for your business and state.</p>' +
+      '<div class="field"><label>Policy</label><select id="bs_refund_mode"' + (dis ? " disabled" : "") + '>' +
+        '<option value="final"' + (v("refund_mode") !== "custom" ? " selected" : "") + '>No refund once the client has access (only exception: we could not read their report)</option>' +
+        '<option value="custom"' + (v("refund_mode") === "custom" ? " selected" : "") + '>My own wording (write it below)</option></select></div>' +
+      '<div class="field"><label>Your own refund policy wording (used only if you chose "My own wording")</label><textarea id="bs_refund_text" rows="4"' + (dis ? " disabled" : "") + '>' + esc(v("refund_text")) + '</textarea></div>';
+    h += '<div class="divider"></div><h3>How your clients pay you</h3>' +
+      '<p class="muted">Shown to your clients when they unlock a report. Payments go directly to you.</p>' +
+      '<div class="grid-2">' +
+        fld("Zelle email or phone", "bs_zelle_contact", v("zelle_contact"), { dis: dis }) +
+        fld("Name Zelle shows", "bs_zelle_name", v("zelle_name"), { dis: dis }) +
+        fld("Note to clients (optional)", "bs_zelle_note", v("zelle_note"), { dis: dis, wide: true }) +
+        '<div class="field" style="grid-column:1/-1;"><label>Other ways to pay (optional): Cash App, PayPal, check, ACH, anything</label><textarea id="bs_payment_instructions" rows="3"' + (dis ? " disabled" : "") + '>' + esc(v("payment_instructions")) + '</textarea></div>' +
+        fld("Price per report ($)", "bs_price_report", v("price_report"), { dis: dis, ph: "for example 60.00" }) +
+        fld("Price for all three bureaus ($)", "bs_price_bundle", v("price_bundle"), { dis: dis, ph: "for example 150.00" }) +
+      '</div>';
+  }
+  if (!dis) h += '<button class="block" id="bs_save"' + (state.busy ? " disabled" : "") + ' style="margin-top:12px;">Save settings</button>' +
+    '<p style="margin-top:10px;"><button type="button" class="secondary" id="bs_export">Download my client list (spreadsheet)</button></p>';
+  return h + '</div>';
+}
+
+function renderTeamCard(){
+  var t = licState.team, s = licState.settings;
+  if (!s || t === null || t === undefined || t === false) return "";
+  var h = '<div class="card"><h2>Your team</h2><p>People who can log in to see and manage your clients. Admins can also change settings and manage the team.</p>';
+  h += '<table><tr><th>Email</th><th>Role</th><th></th></tr>';
+  t.forEach(function(u){
+    h += '<tr><td>' + esc(u.email) + '</td><td>' + (u.role === "org_admin" ? "Admin" : "Staff") + '</td><td>' +
+      (u.is_active ? '<button class="secondary" data-team-active="' + esc(u.id) + '|0">Turn off</button>' : '<span class="badge bad">off</span> <button class="secondary" data-team-active="' + esc(u.id) + '|1">Turn on</button>') + '</td></tr>';
+  });
+  h += '</table><div class="divider"></div><h3>Add a team member</h3><div class="grid-2">' +
+    fld("Email", "tm_email", "") +
+    '<div class="field"><label>Role</label><select id="tm_role"><option value="org_staff">Staff</option><option value="org_admin">Admin</option></select></div>' +
+    '<div class="field"><label>Starting password (8+ characters)</label><input type="password" id="tm_password" autocomplete="new-password"></div></div>' +
+    '<button class="block" id="tm_add" style="margin-top:8px;">Add team member</button><p class="muted">Give them the password directly. They can change it after they log in.</p></div>';
+  return h;
+}
+
+function renderPasswordCard(){
+  return '<div class="card"><h2>Change my password</h2><div class="grid-2">' +
+    '<div class="field"><label>Current password</label><input type="password" id="pw_cur" autocomplete="current-password"></div>' +
+    '<div class="field"><label>New password (8+ characters)</label><input type="password" id="pw_new" autocomplete="new-password"></div></div>' +
+    '<button class="block secondary" id="pw_save" style="margin-top:8px;">Change password</button></div>';
+}
+
+function fmtMoney(n){ return "$" + Number(n).toLocaleString(); }
+function fmtD(iso){ try { return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }); } catch (e) { return iso; } }
+
+var METHOD_OPTS = '<option value="zelle">Zelle</option><option value="ach">ACH</option><option value="wire">Wire</option><option value="check">Check</option><option value="cash">Cash</option><option value="card">Card</option><option value="other">Other</option>';
+
+function renderLicensingCard(){
+  var apps = licState.apps;
+  if (apps === null || apps === false) return "";
+  var sm = licState.summary;
+  var h = '<div class="card"><h2>Licensing</h2>' +
+    (licState.msg && !licState.settings ? '<div class="banner ok">' + esc(licState.msg) + '</div>' : '') +
+    '<p>People who applied for a license. Send them their private link, record payments you receive, then create their account. Public page: <code>' + esc(location.origin + "/static/license.html") + '</code></p>';
+  if (sm){
+    h += '<div class="grid-2" style="margin:8px 0 14px;">' +
+      '<div><div class="muted">Received to date</div><div style="font-size:22px;font-weight:700;">' + fmtMoney(sm.received_total) + '</div></div>' +
+      '<div><div class="muted">Scheduled and not yet received</div><div style="font-size:22px;font-weight:700;">' + fmtMoney(sm.outstanding_scheduled) + '</div></div>' +
+      '<div><div class="muted">Overdue</div><div style="font-size:22px;font-weight:700;color:' + (sm.overdue_count ? 'var(--danger)' : 'inherit') + ';">' + sm.overdue_count + ' (' + fmtMoney(sm.overdue_amount) + ')</div></div>' +
+      '<div><div class="muted">Active licensees · locked</div><div style="font-size:22px;font-weight:700;">' + sm.active_licensees + ' · ' + sm.locked_organizations + '</div></div></div>' +
+      '<p class="muted">Late after ' + sm.grace_days + ' days. Automatic lock-out is ' + (sm.auto_lock ? 'ON' : 'off (you press Lock yourself; set LICENSE_AUTO_LOCK=true in Render to automate it)') + '.</p>';
+  }
+  if (licState.created){
+    var c = licState.created;
+    h += '<div class="banner ok" style="word-break:break-word;"><strong>Account created.</strong> Give these to the licensee directly (the password is shown only once):<br>' +
+      'Sign-up link for their clients: <code>' + esc(location.origin + c.client_link) + '</code><br>Login email: <code>' + esc(c.staff_email) + '</code><br>Temporary password: <code>' + esc(c.temporary_password) + '</code></div>';
+  }
+  if (!apps.length) h += '<div class="empty">No applications yet.</div>';
+  apps.forEach(function(a){
+    var badge = a.status === "active" ? "paid" : (a.status === "paused" || a.status === "cancelled" ? "bad" : "unpaid");
+    var id = esc(a.id);
+    h += '<div style="border-top:1px solid var(--border);padding:12px 0;">' +
+      '<div class="row-wrap" style="justify-content:space-between;"><div><strong>' + esc(a.business_name) + '</strong> <span class="muted">· ' + esc(a.plan) + ' plan</span>' +
+      '<div class="muted">' + esc(a.contact_name) + ' · ' + esc(a.email) + (a.phone ? ' · ' + esc(a.phone) : '') + '</div></div>' +
+      '<div><span class="badge ' + badge + '">' + esc(a.status) + '</span>' + (a.paid_outright ? ' <span class="badge paid">paid outright</span>' : '') + (a.has_overdue ? ' <span class="badge bad">payment overdue</span>' : '') + '</div></div>' +
+      '<div class="muted" style="margin-top:4px;">Applied ' + esc(fmtD(a.created_at)) + (a.signed_at ? ' · signed ' + esc(fmtD(a.signed_at)) : (a.sign_after ? ' · can sign after ' + esc(fmtD(a.sign_after)) : '')) + '</div>' +
+      '<div class="muted" style="margin-top:4px;">Their private link: <code>' + esc(location.origin + a.status_url) + '</code></div>';
+    if (a.lock) h += '<div class="banner err" style="margin-top:8px;">Locked ' + esc(fmtD(a.lock.locked_at)) + (a.lock.auto ? ' (automatic)' : '') + (a.lock.reason ? ': ' + esc(a.lock.reason) : '') + '</div>';
+    if (a.signed_at){
+      h += '<div class="muted" style="margin-top:6px;">Received ' + fmtMoney(a.received_total) + (a.plan_total != null ? ' of ' + fmtMoney(a.plan_total) + ' · balance ' + fmtMoney(a.balance) : ' · monthly plan') + '</div>';
+    }
+    if (a.payments.length){
+      h += '<div class="row-wrap" style="margin-top:6px;gap:8px;"><span class="muted">Paid by</span><select id="mm_' + id + '">' + METHOD_OPTS + '</select><input type="text" id="mr_' + id + '" placeholder="Reference / confirmation # (optional)" style="flex:1;min-width:160px;"></div>';
+      h += '<table style="margin-top:8px;"><tr><th>Payment</th><th>Amount</th><th>Due</th><th></th></tr>';
+      a.payments.forEach(function(p){
+        h += '<tr><td>' + esc(p.label) + '</td><td>' + fmtMoney(p.amount) + '</td><td>' + (p.paid_at ? '<span class="badge paid">paid ' + esc(fmtD(p.paid_at)) + '</span>' : (p.due_date ? esc(fmtD(p.due_date)) + (p.overdue ? ' <span class="badge bad">overdue</span>' : '') : 'after delivery')) + '</td>' +
+          '<td><button class="secondary" data-lic-paid="' + id + '|' + esc(p.id) + '|' + (p.paid_at ? "0" : "1") + '">' + (p.paid_at ? "Undo" : "Mark received") + '</button></td></tr>';
+      });
+      h += '</table>';
+    }
+    if (a.ledger && a.ledger.length){
+      h += '<details style="margin-top:8px;"><summary>Payment record (' + a.ledger.length + ')</summary><table><tr><th>Date</th><th>Amount</th><th>How</th><th>Reference / note</th><th></th></tr>';
+      a.ledger.forEach(function(r){
+        h += '<tr><td>' + esc(fmtD(r.received_at)) + '</td><td>' + fmtMoney(r.amount) + (r.kind === "outright" ? ' <span class="badge paid">outright</span>' : '') + '</td><td>' + esc(r.method || "") + '</td><td>' + esc([r.reference, r.note].filter(Boolean).join(" · ")) + '</td>' +
+          '<td><button class="secondary" data-lic-void="' + id + '|' + esc(r.id) + '">Void</button></td></tr>';
+      });
+      h += '</table></details>';
+    }
+    if (a.signed_at && a.status !== "cancelled"){
+      h += '<details style="margin-top:8px;"><summary>Record a payment, or mark paid outright</summary>' +
+        '<div class="grid-2" style="margin-top:8px;">' +
+        '<div class="field"><label>Amount actually received ($)</label><input type="text" id="la_' + id + '" placeholder="' + (a.plan_total != null ? a.plan_total : '') + '"></div>' +
+        '<div class="field"><label>Paid by</label><select id="lm_' + id + '">' + METHOD_OPTS + '</select></div>' +
+        '<div class="field"><label>Reference / confirmation #</label><input type="text" id="lr_' + id + '"></div>' +
+        '<div class="field"><label>Your note (private)</label><input type="text" id="ln_' + id + '" placeholder="for example: paid in full, small discount"></div></div>' +
+        '<div class="row-wrap" style="gap:8px;"><button data-lic-outright="' + id + '"' + (a.paid_outright ? " disabled" : "") + '>Mark PAID IN FULL (outright)</button>' +
+        '<button class="secondary" data-lic-record="' + id + '">Record this payment only</button></div>' +
+        '<p class="muted">"Paid in full" marks every scheduled payment settled and stops future charges. The amount you type is what you actually received.</p></details>';
+    }
+    h += '<div class="row-wrap" style="margin-top:8px;gap:8px;">';
+    if (a.can_create_account) h += '<button data-lic-create="' + id + '">Create account</button>';
+    if (a.org_slug && !a.lock && a.status !== "cancelled") h += '<input type="text" id="lk_' + id + '" placeholder="Reason shown to them (for example: payment 2 is late)" style="flex:1;min-width:200px;"><button class="secondary" data-lic-pause="' + id + '">Lock out</button>';
+    if (a.lock) h += '<button data-lic-resume="' + id + '">Unlock</button>';
+    if (a.status !== "cancelled") h += '<button class="secondary" data-lic-cancel="' + id + '">Cancel license</button>';
+    h += '</div>';
+    if (a.client_link) h += '<div class="muted" style="margin-top:4px;">Client link: <code>' + esc(location.origin + a.client_link) + '</code></div>';
+    h += '</div>';
+  });
+  h += '</div>';
+  return h + renderOrgsCard();
+}
+
+function renderOrgsCard(){
+  var orgs = licState.orgs;
+  if (!orgs || !orgs.length) return "";
+  var h = '<div class="card"><h2>All organizations</h2><p>Lock out any organization that is not paying, even one you set up by hand. They see your reason when they try to log in. Their clients are locked out too.</p><table><tr><th>Organization</th><th>Clients</th><th>Status</th><th></th></tr>';
+  orgs.forEach(function(o){
+    var id = esc(o.id);
+    h += '<tr><td><strong>' + esc(o.name) + '</strong><div class="muted">' + esc(o.slug) + '</div></td><td>' + o.clients + '</td><td>' +
+      (o.lock ? '<span class="badge bad">locked</span><div class="muted">' + esc(o.lock.reason || "") + '</div>' : '<span class="badge paid">active</span>') + '</td><td>' +
+      (o.is_platform ? '<span class="muted">main site</span>' : (o.lock ? '<button data-org-unlock="' + id + '">Unlock</button>' :
+        '<input type="text" id="ok_' + id + '" placeholder="Reason" style="width:150px;"> <button class="secondary" data-org-lock="' + id + '">Lock out</button>')) + '</td></tr>';
+  });
+  return h + '</table></div>';
+}
+
+function renderMyLicenseCard(){
+  var m = licState.mine, s = licState.settings;
+  if (!s || !m || !m.has_license) return "";
+  var h = '<div class="card"><h2>Your license</h2><p>' + esc(m.plan_name) + ' · status: <strong>' + esc(m.status) + '</strong></p>';
+  if (m.overdue && m.overdue.length){
+    h += '<div class="banner err">A payment is past due (' + m.overdue.map(function(p){ return esc(p.label) + ', ' + fmtMoney(p.amount); }).join("; ") + '). Please pay it soon to avoid being locked out. Contact BlackBridge if you have a question.</div>';
+  }
+  h += '<div class="grid-2"><div><div class="muted">Paid so far</div><div style="font-size:22px;font-weight:700;">' + fmtMoney(m.received_total) + '</div></div>' +
+    '<div><div class="muted">' + (m.paid_outright ? 'Status' : 'Balance left') + '</div><div style="font-size:22px;font-weight:700;">' + (m.paid_outright ? 'Paid in full' : (m.balance == null ? 'Monthly plan' : fmtMoney(m.balance))) + '</div></div></div>';
+  if (m.next_due) h += '<p style="margin-top:8px;">Next payment: <strong>' + esc(m.next_due.label) + '</strong>, ' + fmtMoney(m.next_due.amount) + ', due ' + esc(fmtD(m.next_due.due_date)) + '.</p>';
+  if (m.receipts && m.receipts.length){
+    h += '<details><summary>Payments received (' + m.receipts.length + ')</summary><table><tr><th>Date</th><th>Amount</th><th>How</th></tr>' +
+      m.receipts.map(function(r){ return '<tr><td>' + esc(fmtD(r.received_at)) + '</td><td>' + fmtMoney(r.amount) + '</td><td>' + esc(r.method || "") + '</td></tr>'; }).join("") + '</table></details>';
+  }
+  return h + '</div>';
+}
+
+function renderChecklistCard(){
+  var s = licState.settings, t = licState.team;
+  if (!s || s.uses_environment_for_payments) return "";
+  var items = [
+    [!!s.logo, "Upload your logo"],
+    [!!s.business_address, "Add your business address (printed in your agreements)"],
+    [!!(s.phone || s.email), "Add your phone or email so clients can reach you"],
+    [!!(s.zelle_contact || s.payment_instructions), "Tell clients how to pay you"],
+    [!!s.price_report, "Set your prices"],
+    [Array.isArray(t) && t.length > 1, "Add a team member (optional)"]
+  ];
+  var done = items.filter(function(i){ return i[0]; }).length;
+  if (done === items.length) return "";
+  var h = '<div class="card"><h2>Getting started (' + done + ' of ' + items.length + ')</h2><ul style="list-style:none;padding:0;margin:0;">';
+  items.forEach(function(i){ h += '<li style="padding:4px 0;">' + (i[0] ? '<span class="badge paid">done</span> ' : '<span class="badge unpaid">to do</span> ') + esc(i[1]) + '</li>'; });
+  h += '</ul><p style="margin-top:10px;">Your client sign-up link to share: <code>' + esc(location.origin + s.client_link) + '</code> <button type="button" class="secondary" id="bs_copy_link">Copy link</button></p>' +
+    '<p class="muted">Also available: your clients list and a downloadable client list below. Before you take your first client, talk to your own attorney about the rules for your state.</p></div>';
+  return h;
+}
+
+function licPost(path, body){
+  return api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+}
+
+function licAfterRender(app){
+  if (state.view !== "admin"){ return; }
+  if (!licState.loaded){ licLoad(); return; }
+  var $ = function(id){ return document.getElementById(id); };
+  // keep what the licensee has typed so a re-render does not erase it
+  var keys = ["display_name", "primary_color", "business_address", "phone", "email", "website", "support_hours", "zelle_contact", "zelle_name", "zelle_note", "payment_instructions", "price_report", "price_bundle", "refund_mode", "refund_text"];
+  keys.forEach(function(k){
+    var el = $("bs_" + k);
+    if (el){
+      var h = function(){ licState.draft = licState.draft || {}; licState.draft[k] = el.value; };
+      el.addEventListener("input", h); el.addEventListener("change", h);
+    }
+  });
+  var pick = $("bs_color_pick"), ctext = $("bs_primary_color");
+  if (pick && ctext) pick.addEventListener("input", function(){ ctext.value = pick.value; licState.draft = licState.draft || {}; licState.draft.primary_color = pick.value; });
+  var file = $("bs_logo_file");
+  if (file) file.addEventListener("change", function(){
+    var f = file.files[0]; if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      var im = new Image();
+      im.onload = function(){
+        var max = 400, sc = Math.min(1, max / Math.max(im.width, im.height));
+        var cv = document.createElement("canvas"); cv.width = Math.max(1, Math.round(im.width * sc)); cv.height = Math.max(1, Math.round(im.height * sc));
+        cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
+        var out = cv.toDataURL("image/png");
+        if (out.length > 300000) out = cv.toDataURL("image/jpeg", 0.85);
+        licState.logoDraft = out; render();
+      };
+      im.onerror = function(){ setBanner("error", "That file could not be read as an image."); };
+      im.src = reader.result;
+    };
+    reader.readAsDataURL(f);
+  });
+  var clr = $("bs_logo_clear"); if (clr) clr.addEventListener("click", function(){ licState.logoDraft = ""; render(); });
+  var save = $("bs_save");
+  if (save) save.addEventListener("click", function(){
+    var body = {};
+    keys.forEach(function(k){ var el = $("bs_" + k); if (el) body[k] = el.value; });
+    if (licState.logoDraft !== undefined) body.logo = licState.logoDraft;
+    clearBanner(); setBusy(true);
+    api("/org-settings/me", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then(function(){
+      licState.draft = null; licState.logoDraft = undefined; setBusy(false); licReload("Saved. Your clients will see these changes now.");
+    }).catch(function(e){ setBusy(false); setBanner("error", e.message); });
+  });
+
+  app.querySelectorAll("[data-team-active]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = b.getAttribute("data-team-active").split("|");
+      licPost("/org-settings/team/" + p[0] + "/active", { active: p[1] === "1" }).then(function(){ licReload(); }).catch(function(e){ setBanner("error", e.message); });
+    });
+  });
+  var tmAdd = $("tm_add");
+  if (tmAdd) tmAdd.addEventListener("click", function(){
+    licPost("/org-settings/team", { email: $("tm_email").value, password: $("tm_password").value, role: $("tm_role").value })
+      .then(function(){ licReload("Team member added. Give them their password directly."); }).catch(function(e){ setBanner("error", e.message); });
+  });
+  var pwSave = $("pw_save");
+  if (pwSave) pwSave.addEventListener("click", function(){
+    licPost("/account/change-password", { current_password: $("pw_cur").value, new_password: $("pw_new").value })
+      .then(function(){ $("pw_cur").value = ""; $("pw_new").value = ""; setBanner("ok", "Password changed."); }).catch(function(e){ setBanner("error", e.message); });
+  });
+  var val = function(id){ var e = $(id); return e ? e.value : ""; };
+  function done(msg){ return function(){ licReload(msg); }; }
+  function fail(e){ setBanner("error", e.message); }
+  app.querySelectorAll("[data-lic-paid]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = b.getAttribute("data-lic-paid").split("|");
+      licPost("/license/admin/" + p[0] + "/payments/" + p[1] + "/paid", { paid: p[2] === "1", method: val("mm_" + p[0]) || "zelle", reference: val("mr_" + p[0]) }).then(done()).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-lic-void]").forEach(function(b){
+    b.addEventListener("click", function(){
+      if (!window.confirm("Void this payment entry? It stays in the record, marked void, and is not counted.")) return;
+      var p = b.getAttribute("data-lic-void").split("|");
+      licPost("/license/admin/" + p[0] + "/ledger/" + p[1] + "/void").then(done()).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-lic-outright]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var id = b.getAttribute("data-lic-outright"), amt = val("la_" + id);
+      if (!amt){ setBanner("error", "Type the amount you actually received first."); return; }
+      if (!window.confirm("Mark this license PAID IN FULL with $" + amt + " received?")) return;
+      licPost("/license/admin/" + id + "/paid-in-full", { amount: amt, method: val("lm_" + id), reference: val("lr_" + id), note: val("ln_" + id) }).then(done("Marked paid in full.")).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-lic-record]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var id = b.getAttribute("data-lic-record"), amt = val("la_" + id);
+      if (!amt){ setBanner("error", "Type the amount you actually received first."); return; }
+      licPost("/license/admin/" + id + "/record-payment", { amount: amt, method: val("lm_" + id), reference: val("lr_" + id), note: val("ln_" + id) }).then(done("Payment recorded.")).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-lic-create]").forEach(function(b){
+    b.addEventListener("click", function(){
+      licPost("/license/admin/" + b.getAttribute("data-lic-create") + "/create-account").then(function(r){ licState.created = r; licReload(); }).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-lic-pause]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var id = b.getAttribute("data-lic-pause");
+      if (!window.confirm("Lock out this licensee? Their staff and clients cannot log in or sign up until you unlock them.")) return;
+      licPost("/license/admin/" + id + "/pause", { reason: val("lk_" + id) }).then(done("Locked out.")).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-lic-resume]").forEach(function(b){
+    b.addEventListener("click", function(){ licPost("/license/admin/" + b.getAttribute("data-lic-resume") + "/resume").then(done("Unlocked.")).catch(fail); });
+  });
+  app.querySelectorAll("[data-lic-cancel]").forEach(function(b){
+    b.addEventListener("click", function(){
+      if (!window.confirm("Cancel this license? Their account will be locked out.")) return;
+      licPost("/license/admin/" + b.getAttribute("data-lic-cancel") + "/cancel").then(done()).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-org-lock]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var id = b.getAttribute("data-org-lock");
+      if (!window.confirm("Lock out this organization and its clients?")) return;
+      licPost("/license/admin/organizations/" + id + "/lock", { reason: val("ok_" + id) }).then(done("Locked out.")).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-org-unlock]").forEach(function(b){
+    b.addEventListener("click", function(){ licPost("/license/admin/organizations/" + b.getAttribute("data-org-unlock") + "/unlock").then(done("Unlocked.")).catch(fail); });
+  });
+  var copy = $("bs_copy_link");
+  if (copy) copy.addEventListener("click", function(){
+    var link = location.origin + (licState.settings ? licState.settings.client_link : "");
+    if (navigator.clipboard) navigator.clipboard.writeText(link).then(function(){ setBanner("ok", "Link copied."); }).catch(function(){ setBanner("error", "Copy this link by hand: " + link); });
+    else setBanner("error", "Copy this link by hand: " + link);
+  });
+  var exp = $("bs_export");
+  if (exp) exp.addEventListener("click", function(){
+    fetch("/org-settings/export/clients.csv", { headers: { "Authorization": "Bearer " + state.token } }).then(function(r){
+      if (!r.ok) throw new Error("Only an organization admin can export the client list.");
+      return r.blob();
+    }).then(function(blob){
+      var u = URL.createObjectURL(blob), a = document.createElement("a");
+      a.href = u; a.download = (licState.settings ? licState.settings.slug : "clients") + "-clients.csv"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u);
+    }).catch(fail);
+  });
+}
+
 function boot(){
   loadToken();
   if (state.token && state.tokenPayload){
@@ -2508,6 +2965,285 @@ function boot(){
   }
   state.view = "auth";
   render();
+  var brandSlug = qs("org") || DEFAULT_ORG_SLUG || "";
+  if (brandSlug){
+    api("/org-settings/public/" + encodeURIComponent(brandSlug)).then(applyBrand).catch(function(){});
+  }
+}
+
+/* ---------- Credit Builder add-on ---------- */
+var bld = { me: undefined, loadingMe: false, ov: undefined, loadingOv: false, settings: undefined, cl: null, clLoading: null, msg: null, tier: "guided", track: "", accept: false, err: null };
+
+function bldMoneyHtml(t){ return '<strong>' + esc(t) + '</strong>'; }
+
+function bldLoadMe(){
+  if (bld.loadingMe) return; bld.loadingMe = true;
+  api("/builder/me").then(function(j){ bld.me = j; }).catch(function(){ bld.me = { enabled: false }; })
+    .then(function(){ bld.loadingMe = false; render(); });
+}
+function bldReloadMe(msg){ bld.me = undefined; bld.msg = msg || null; bld.loadingMe = false; bldLoadMe(); }
+
+function bldLoadStaff(){
+  if (bld.loadingOv) return; bld.loadingOv = true;
+  Promise.all([
+    api("/builder/staff/overview").then(function(j){ bld.ov = j; }).catch(function(){ bld.ov = null; }),
+    api("/builder/settings").then(function(j){ bld.settings = j; }).catch(function(){ bld.settings = null; })
+  ]).then(function(){ bld.loadingOv = false; render(); });
+}
+function bldReloadStaff(msg){ bld.ov = undefined; bld.settings = undefined; bld.cl = null; bld.clLoading = null; bld.msg = msg || null; bld.loadingOv = false; bldLoadStaff(); }
+
+function bldLoadClient(id){
+  if (bld.clLoading === id) return; bld.clLoading = id;
+  api("/builder/staff/clients/" + encodeURIComponent(id)).then(function(j){ bld.cl = { id: id, data: j }; })
+    .catch(function(){ bld.cl = { id: id, data: null }; })
+    .then(function(){ bld.clLoading = null; render(); });
+}
+
+function bldProgressBar(p){
+  var pct = p.total ? Math.round(100 * p.done / p.total) : 0;
+  return '<div style="background:var(--border);border-radius:8px;height:10px;overflow:hidden;margin:6px 0;"><div style="width:' + pct + '%;height:100%;background:var(--brand);"></div></div>' +
+    '<div class="muted">' + p.done + ' of ' + p.total + ' required steps done</div>';
+}
+
+function bldTaskRows(plan, canCoach, prefix){
+  var h = '';
+  plan.tasks.forEach(function(t){
+    var mine = canCoach || t.who === "client";
+    var chk = t.done_at ? '<span class="badge paid">Done</span>' : (t.overdue ? '<span class="badge bad">Late</span>' : '<span class="badge unpaid">To do</span>');
+    h += '<div style="border-top:1px solid var(--border);padding:10px 0;">' +
+      '<div class="row-wrap" style="justify-content:space-between;gap:8px;"><div><strong>' + esc(t.title) + '</strong>' +
+      (t.optional ? ' <span class="muted">(optional)</span>' : '') + (t.who === "coach" ? ' <span class="pill">coach</span>' : '') +
+      '<div class="muted">Due ' + esc(fmtD(t.due_at)) + '</div></div><div>' + chk + '</div></div>' +
+      '<div class="muted" style="margin-top:4px;">' + esc(t.detail || "") + '</div>' +
+      (mine && t.key.indexOf("checkin_") !== 0 ? '<button class="secondary" style="margin-top:6px;" data-bld-task="' + prefix + '|' + esc(t.id) + '|' + (t.done_at ? "0" : "1") + '">' + (t.done_at ? "Undo" : "Mark done") + '</button>' : '') +
+      '</div>';
+  });
+  return h;
+}
+
+function bldCheckinRows(plan, who){
+  var h = '<h3 style="margin-top:14px;">Check-ins</h3>';
+  plan.checkins.forEach(function(c){
+    h += '<div class="row-wrap" style="justify-content:space-between;border-top:1px solid var(--border);padding:8px 0;gap:8px;">' +
+      '<div><strong>' + c.day + '-day check-in</strong><div class="muted">Due ' + esc(fmtD(c.due_at)) + (c.accounts_found != null ? ' · ' + c.accounts_found + ' account(s) on the report you picked' : '') + '</div></div><div>' +
+      (c.completed_at ? '<span class="badge paid">Done ' + esc(fmtD(c.completed_at)) + '</span>'
+        : ((who === "coach" || c.open_now) && plan.status === "active" ? '<button class="secondary" data-bld-checkin="' + who + '|' + c.day + '">Complete check-in</button>' : '<span class="muted">Opens 3 days before it is due</span>')) +
+      '</div></div>';
+  });
+  return h;
+}
+
+function bldPayBox(me, plan){
+  if (!plan.owed_now_cents) return "";
+  var p = me.pay, h = '<div class="banner warn" style="margin-top:12px;"><strong>Payment due now: ' + esc(plan.owed_now_text) + '</strong> for steps already finished.';
+  if (p && p.contact){
+    h += '<br>Send it by Zelle to <strong>' + esc(p.contact) + '</strong>' + (p.name ? ' (shows as ' + esc(p.name) + ')' : '') + ' and put <strong>' + esc(p.memo) + '</strong> in the note.' + (p.note ? '<br>' + esc(p.note) : '');
+  }
+  if (p && p.instructions) h += '<br>' + esc(p.instructions);
+  return h + '</div>';
+}
+
+function renderBuilderCard(){
+  var me = bld.me;
+  if (me === undefined) return "";
+  if (!me || !me.enabled) return "";
+  var plan = me.plan;
+  var h = '<div class="card"><h2>Credit Builder</h2>' + (bld.msg ? '<div class="banner ok">' + esc(bld.msg) + '</div>' : '') + (bld.err ? '<div class="banner error">' + esc(bld.err) + '</div>' : '');
+
+  if (plan && plan.status === "active" || plan && plan.status === "completed"){
+    h += '<p><strong>' + esc(plan.tier_label) + '</strong> · ' + esc(plan.track_label) + ' · day ' + plan.day + (plan.status === "completed" ? ' · <span class="badge paid">Finished</span>' : '') + '</p>' + bldProgressBar(plan.progress);
+    h += bldPayBox(me, plan);
+    h += '<div class="muted" style="margin-top:6px;">Paid so far ' + esc(plan.paid_text) + ' of ' + esc(plan.price_text) + '. Nothing is charged until the matching step is done.</div>';
+    h += '<h3 style="margin-top:14px;">Your steps</h3>' + bldTaskRows(plan, false, "me") + bldCheckinRows(plan, "me");
+    if (plan.status === "active"){
+      h += '<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:10px;"><button class="link" data-bld-cancel="me">Cancel this plan</button>' +
+        '<div class="muted">' + (plan.can_cancel_free ? 'You can cancel free of charge, and get back anything you paid, until ' + esc(fmtD(plan.cancel_until)) + '.' : 'You can cancel any time. Steps not yet done will not be charged.') + '</div></div>';
+    }
+  } else if (plan && plan.status === "offered"){
+    h += '<p>Your coach offered you the <strong>' + esc(plan.tier_label) + '</strong> (' + esc(plan.price_text) + ') starting from: ' + esc(plan.track_label) + '.</p>';
+    var tt = me.tiers.filter(function(x){ return x.id === plan.tier; })[0];
+    h += '<details><summary>Read the agreement</summary><pre style="white-space:pre-wrap;">' + esc(tt ? tt.agreement_text : plan.agreement_text || "") + '</pre></details>' +
+      '<label style="display:flex;gap:8px;margin:10px 0;"><input type="checkbox" id="bld_accept"' + (bld.accept ? " checked" : "") + '> <span>I have read the agreement and I accept it.</span></label>' +
+      '<button data-bld-enroll="offer"' + (state.busy ? " disabled" : "") + '>Accept and start</button> <button class="secondary" data-bld-cancel="me">No thanks</button>';
+  } else {
+    if (plan && plan.status === "cancelled"){
+      h += '<p class="muted">Your last plan was cancelled' + (plan.refund_due > 0 ? '. We owe you ' + esc(plan.refund_due_text) + ' back.' : '.') + ' You are welcome to start again.</p>';
+    }
+    h += '<p>No credit history, or very little? This is a 90-day plan that takes you from nothing to real, reporting accounts, step by step. We do not promise any score. You apply for each product yourself, using only your own real Social Security number or ITIN.</p>';
+    if (me.suggestion){
+      h += '<p class="' + (me.suggestion.track ? 'muted' : 'banner warn') + '">' + esc(me.suggestion.reason) + '</p>';
+    }
+    if (me.start_funds_text){
+      h += '<p class="banner warn"><strong>Plan on about ' + esc(me.start_funds_text) + ' of your own money</strong> for account deposits and fees (a secured card deposit, credit-builder payments). You pay it straight to the bank or lender, in your own name. ' + esc(me.business) + ' never holds or collects it.</p>';
+    }
+    h += '<div class="field"><label>Where are you starting from?</label><select id="bld_track">';
+    var cur = bld.track || (me.suggestion && me.suggestion.track) || "thin";
+    me.tracks.forEach(function(t){ h += '<option value="' + t.id + '"' + (t.id === cur ? " selected" : "") + '>' + esc(t.label) + '</option>'; });
+    h += '</select></div><div class="grid-2">';
+    me.tiers.forEach(function(t){
+      h += '<label class="offer-card" style="cursor:pointer;' + (bld.tier === t.id ? 'border:2px solid var(--brand);' : '') + '"><div class="row-wrap" style="justify-content:space-between;"><strong>' + esc(t.label) + '</strong><span style="font-size:20px;font-weight:700;">' + esc(t.price_text) + '</span></div>' +
+        '<div class="muted" style="margin:6px 0;">' + esc(t.summary) + '</div>' +
+        '<div class="muted">You pay in steps, only after each one is done:</div><ul style="margin:4px 0 8px 18px;">' + t.milestones.map(function(m){ return '<li>' + esc(m.label) + ': ' + esc(m.amount_text) + '</li>'; }).join("") + '</ul>' +
+        '<input type="radio" name="bld_tier" value="' + t.id + '"' + (bld.tier === t.id ? " checked" : "") + '> Choose this one</label>';
+    });
+    h += '</div>';
+    var sel = me.tiers.filter(function(x){ return x.id === bld.tier; })[0] || me.tiers[0];
+    h += '<details style="margin-top:10px;"><summary>Read the agreement</summary><pre style="white-space:pre-wrap;">' + esc(sel.agreement_text) + '</pre></details>' +
+      '<label style="display:flex;gap:8px;margin:10px 0;"><input type="checkbox" id="bld_accept"' + (bld.accept ? " checked" : "") + '> <span>I have read the agreement and I accept it. I understand there is no guaranteed result.</span></label>' +
+      '<button class="block" data-bld-enroll="new"' + (state.busy ? " disabled" : "") + '>Start my 90-day plan</button>';
+  }
+
+  // tools and sites
+  if (me.guide){
+    h += '<details style="margin-top:14px;"><summary>Helpful sites and what to look for</summary>' +
+      '<ul style="margin:8px 0 8px 18px;">' + me.guide.sites.map(function(s){ return '<li><a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.name) + '</a>: ' + esc(s.why) + '</li>'; }).join("") + '</ul>' +
+      me.guide.products.map(function(p){ return '<p><strong>' + esc(p.name) + '.</strong> ' + esc(p.what) + '<br><span class="muted">Check: ' + p.check.map(esc).join("; ") + '.</span></p>'; }).join("") + '</details>';
+  }
+  h += '</div>';
+  return h + renderPartnerOffersSection(["credit_builder_loan", "secured_card", "rent_reporting"]);
+}
+
+function renderStaffBuilder(clientId){
+  var d = (bld.cl && bld.cl.id === clientId) ? bld.cl.data : undefined;
+  var h = '<div class="divider"></div><h3>Credit Builder</h3>' + (bld.msg ? '<div class="banner ok">' + esc(bld.msg) + '</div>' : '');
+  if (d === undefined){ return h + '<p class="muted">Loading…</p>'; }
+  if (d === null){ return h + '<p class="muted">The Credit Builder is not switched on for your business.</p>'; }
+  var plan = d.plan;
+  if (!plan || plan.status === "cancelled" || plan.status === "completed"){
+    if (plan) h += '<p class="muted">Last plan: ' + esc(plan.tier_label) + ' (' + esc(plan.status) + ')' + (plan.refund_due > 0 ? ' · refund owed ' + esc(plan.refund_due_text) : '') + '</p>';
+    h += '<p class="muted">' + esc(d.suggestion.reason) + '</p><div class="row-wrap" style="gap:8px;">' +
+      '<select id="bldo_tier">' + d.tiers.map(function(t){ return '<option value="' + t.id + '">' + esc(t.label) + ' (' + esc(d.prices[t.id]) + ')</option>'; }).join("") + '</select>' +
+      '<select id="bldo_track">' + d.tracks.map(function(t){ return '<option value="' + t.id + '"' + (t.id === d.suggestion.track ? " selected" : "") + '>' + esc(t.label) + '</option>'; }).join("") + '</select>' +
+      '<button data-bld-offer="' + esc(clientId) + '">Offer this plan</button></div>' +
+      '<p class="muted">The client must read and accept the agreement before anything starts.</p>';
+    return h;
+  }
+  h += '<p><strong>' + esc(plan.tier_label) + '</strong> · ' + esc(plan.track_label) + ' · ' + esc(plan.status) + (plan.status === "active" ? ' · day ' + plan.day : '') + '</p>';
+  if (plan.status === "offered"){
+    return h + '<p class="muted">Waiting for the client to read and accept the agreement.</p><button class="secondary" data-bld-cancel="' + esc(plan.id) + '">Withdraw offer</button>';
+  }
+  h += bldProgressBar(plan.progress) + '<div class="muted">Accepted ' + esc(fmtD(plan.accepted_at)) + ' from ' + esc(plan.accepted_ip || "unknown IP") + ' · agreement ' + esc(plan.agreement_version || "") + '</div>';
+  h += '<h3 style="margin-top:12px;">Payments</h3><table><tr><th>Step</th><th>Amount</th><th>Status</th><th></th></tr>';
+  plan.milestones.forEach(function(m){
+    var st = m.paid ? '<span class="badge paid">Paid ' + esc(fmtD(m.paid_at)) + (m.paid_method ? ' · ' + esc(m.paid_method) : '') + '</span>' : m.dropped ? '<span class="badge unpaid">Cancelled</span>' : m.reached ? '<span class="badge bad">Due now</span>' : '<span class="muted">Not yet earned' + (m.label.indexOf("check-in") === -1 && plan.can_cancel_free ? ' (free-cancel window open)' : '') + '</span>';
+    var act = m.paid ? '<button class="secondary" data-bld-unpaid="' + esc(plan.id) + '|' + esc(m.id) + '">Undo</button>' : (m.reached && !m.dropped ? '<button data-bld-paid="' + esc(plan.id) + '|' + esc(m.id) + '">Mark received</button>' : '');
+    h += '<tr><td>' + esc(m.label) + '</td><td>' + esc(m.amount_text) + '</td><td>' + st + '</td><td>' + act + '</td></tr>';
+  });
+  h += '</table>';
+  if (plan.milestones.some(function(m){ return m.reached && !m.paid && !m.dropped; })){
+    h += '<div class="row-wrap" style="gap:8px;margin-top:6px;"><span class="muted">Paid by</span><select id="bld_method"><option>Zelle</option><option>ACH</option><option>Wire</option><option>Cash App</option><option>PayPal</option><option>Check</option><option>Cash</option><option>Other</option></select><input type="text" id="bld_ref" placeholder="Reference (optional)" style="flex:1;min-width:140px;"></div>';
+  }
+  if (plan.cancelled_within_window === null && plan.status === "active"){
+    h += '<div class="muted" style="margin-top:6px;">Client can cancel free until ' + esc(fmtD(plan.cancel_until)) + '.</div>';
+  }
+  h += '<h3 style="margin-top:12px;">Steps</h3>' + bldTaskRows(plan, true, "staff:" + plan.id) + bldCheckinRows(plan, "coach");
+  h += '<div class="field" style="margin-top:10px;"><label>Coach note (private)</label><textarea id="bld_note" rows="2">' + esc(plan.coach_note || "") + '</textarea></div>' +
+    '<div class="row-wrap" style="gap:8px;"><button class="secondary" data-bld-note="' + esc(plan.id) + '">Save note</button><button class="secondary" data-bld-cancel="' + esc(plan.id) + '">Cancel this plan</button></div>';
+  return h;
+}
+
+function renderBuilderWorklistCard(){
+  var ov = bld.ov;
+  if (ov === undefined || ov === null) return "";
+  var h = '<div class="card"><h2>Credit Builder worklist</h2><p>Clients on a 90-day plan, with what needs your attention.</p>';
+  if (!ov.plans.length){
+    h += '<div class="empty">No one is on a Credit Builder plan yet. Open a client and press "Offer this plan", or clients can start on their own. Your prices: guided ' + esc(ov.prices.guided) + ', coaching ' + esc(ov.prices.coaching) + '.</div></div>';
+    return h;
+  }
+  h += '<table><tr><th>Client</th><th>Plan</th><th>Day</th><th>Steps</th><th>Late</th><th>Next check-in</th><th>Owed now</th></tr>';
+  ov.plans.forEach(function(p){
+    h += '<tr style="cursor:pointer;" data-open-client="' + esc(p.client_id) + '"><td>' + esc(p.client) + '</td><td>' + esc(p.tier_label) + (p.status === "offered" ? ' <span class="badge unpaid">offered</span>' : '') + '</td><td>' + p.day + '</td><td>' + p.progress.done + '/' + p.progress.total + '</td><td>' + (p.overdue_tasks ? '<span class="badge bad">' + p.overdue_tasks + '</span>' : '0') + '</td><td>' + (p.next_checkin_day ? p.next_checkin_day + 'd · ' + esc(fmtD(p.next_checkin_due)) : '-') + '</td><td>' + esc(p.owed_now_text) + '</td></tr>';
+  });
+  return h + '</table></div>';
+}
+
+function renderBuilderSettingsCard(){
+  var s = bld.settings;
+  if (!s || !s.available) return "";
+  return '<div class="card"><h2>Credit Builder prices</h2><p>The 90-day Credit Builder is sold to your clients as its own service, separate from credit repair. ' + (s.platform ? 'These are the main site prices.' : 'Set your own prices.') + '</p>' +
+    (s.platform ? '<p class="muted">The main site prices come from Render (PRICE_BUILDER_GUIDED and PRICE_BUILDER_COACHING).</p>' : '') +
+    '<div class="grid-2"><div class="field"><label>Guided plan ($)</label><input type="text" id="bs2_guided" value="' + esc(s.price_guided) + '"' + (s.platform ? " disabled" : "") + '></div>' +
+    '<div class="field"><label>Coaching plan ($)</label><input type="text" id="bs2_coaching" value="' + esc(s.price_coaching) + '"' + (s.platform ? " disabled" : "") + '></div></div>' +
+    (s.platform ? '' : '<label style="display:flex;gap:8px;margin:8px 0;"><input type="checkbox" id="bs2_enabled"' + (s.enabled ? " checked" : "") + '> <span>Offer the Credit Builder to my clients</span></label><button id="bs2_save">Save</button>') + '</div>';
+}
+
+function bldAfterRender(app){
+  var $ = function(id){ return document.getElementById(id); };
+  var fail = function(e){ bld.err = e.message; render(); };
+  if (state.view === "client" && bld.me === undefined && !bld.loadingMe){ bldLoadMe(); return; }
+  if (state.view === "admin"){
+    if (bld.ov === undefined && !bld.loadingOv){ bldLoadStaff(); return; }
+    if (staffSelectedClientId && bld.ov && !(bld.cl && bld.cl.id === staffSelectedClientId) && bld.clLoading !== staffSelectedClientId){ bldLoadClient(staffSelectedClientId); return; }
+  }
+  var acc = $("bld_accept"); if (acc) acc.addEventListener("change", function(){ bld.accept = acc.checked; });
+  var trk = $("bld_track"); if (trk) trk.addEventListener("change", function(){ bld.track = trk.value; });
+  app.querySelectorAll("input[name=bld_tier]").forEach(function(r){ r.addEventListener("change", function(){ bld.tier = r.value; render(); }); });
+  app.querySelectorAll("[data-bld-enroll]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var offer = b.getAttribute("data-bld-enroll") === "offer";
+      var plan = bld.me && bld.me.plan;
+      var body = offer && plan ? { tier: plan.tier, track: plan.track, accept_terms: !!($("bld_accept") && $("bld_accept").checked) }
+        : { tier: bld.tier, track: ($("bld_track") ? $("bld_track").value : undefined), accept_terms: !!($("bld_accept") && $("bld_accept").checked) };
+      if (!body.accept_terms){ bld.err = "Please tick the box to accept the agreement."; render(); return; }
+      bld.err = null; licPost("/builder/me/enroll", body).then(function(){ bld.accept = false; bldReloadMe("Your plan has started. Here are your first steps."); }).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-bld-task]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = b.getAttribute("data-bld-task").split("|"), who = p[0], tid = p[1], done = p[2] === "1";
+      if (who === "me"){ licPost("/builder/me/tasks/" + tid + "/done", { done: done }).then(function(){ bldReloadMe(); }).catch(fail); }
+      else { var pid = who.split(":")[1]; licPost("/builder/staff/plans/" + pid + "/tasks/" + tid + "/done", { done: done }).then(function(){ bldRefreshStaffClient(); }).catch(fail); }
+    });
+  });
+  app.querySelectorAll("[data-bld-checkin]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = b.getAttribute("data-bld-checkin").split("|");
+      if (p[0] === "me"){ licPost("/builder/me/checkins/" + p[1] + "/complete", {}).then(function(){ bldReloadMe("Check-in saved."); }).catch(fail); }
+      else { var plan = bld.cl && bld.cl.data && bld.cl.data.plan; if (!plan) return; licPost("/builder/staff/plans/" + plan.id + "/checkins/" + p[1] + "/complete", {}).then(function(){ bldRefreshStaffClient("Check-in saved."); }).catch(fail); }
+    });
+  });
+  app.querySelectorAll("[data-bld-cancel]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var who = b.getAttribute("data-bld-cancel");
+      if (!window.confirm("Cancel this plan?")) return;
+      if (who === "me"){ licPost("/builder/me/cancel").then(function(){ bldReloadMe("Plan cancelled."); }).catch(fail); }
+      else { licPost("/builder/staff/plans/" + who + "/cancel").then(function(){ bldRefreshStaffClient("Plan cancelled."); }).catch(fail); }
+    });
+  });
+  app.querySelectorAll("[data-bld-offer]").forEach(function(b){
+    b.addEventListener("click", function(){
+      licPost("/builder/staff/clients/" + b.getAttribute("data-bld-offer") + "/offer", { tier: $("bldo_tier").value, track: $("bldo_track").value })
+        .then(function(){ bldRefreshStaffClient("Offer sent. The client sees it on their dashboard."); }).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-bld-paid]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = b.getAttribute("data-bld-paid").split("|");
+      licPost("/builder/staff/plans/" + p[0] + "/milestones/" + p[1] + "/paid", { method: $("bld_method") ? $("bld_method").value : "", reference: $("bld_ref") ? $("bld_ref").value : "" })
+        .then(function(){ bldRefreshStaffClient("Payment recorded."); }).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-bld-unpaid]").forEach(function(b){
+    b.addEventListener("click", function(){
+      var p = b.getAttribute("data-bld-unpaid").split("|");
+      licPost("/builder/staff/plans/" + p[0] + "/milestones/" + p[1] + "/unpaid").then(function(){ bldRefreshStaffClient("Undone."); }).catch(fail);
+    });
+  });
+  app.querySelectorAll("[data-bld-note]").forEach(function(b){
+    b.addEventListener("click", function(){
+      licPost("/builder/staff/plans/" + b.getAttribute("data-bld-note") + "/note", { note: $("bld_note").value }).then(function(){ bldRefreshStaffClient("Note saved."); }).catch(fail);
+    });
+  });
+  var sv = $("bs2_save");
+  if (sv) sv.addEventListener("click", function(){
+    api("/builder/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ enabled: $("bs2_enabled").checked, price_guided: $("bs2_guided").value, price_coaching: $("bs2_coaching").value }) })
+      .then(function(){ bldReloadStaff("Saved."); }).catch(fail);
+  });
+}
+
+function bldRefreshStaffClient(msg){
+  var id = staffSelectedClientId; bld.msg = msg || null; bld.err = null; bld.cl = null; bld.clLoading = null; bld.ov = undefined; bld.loadingOv = false; bld.settings = undefined;
+  if (id) bldLoadClient(id); else render();
 }
 
 // Re-fetch analytics / the client list whenever we land on the admin view
