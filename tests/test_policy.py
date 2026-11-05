@@ -118,7 +118,64 @@ def test_refund_rule_needs_box_and_is_recorded(world):
     client.post(f"/staff/reports/{world['ids']['fresh']}/mark-unpaid", headers=world["s"])
 
 
-def test_refund_rule_is_inactive_while_agreement_is_required(world):
+def test_rule_covers_self_service_only_and_done_for_you_get_the_agreement(world):
     settings.refund_final_after_unlock = True
     settings.agreement_required = True
+    r = client.post("/auth/signup/client", json={"email": "d@pol.com", "password": "clientpass1", "full_name": "Dee Client", "org_slug": "pol-org"})
+    assert r.status_code == 201, r.text
+    dfy = _login("d@pol.com", "clientpass1")
+    db = SessionLocal()
+    dc = db.query(models.Client).filter_by(email="d@pol.com").first()
+    rep = models.Report(organization_id=dc.organization_id, client_id=dc.id, original_filename="d", raw_text="DDD", status="scanned")
+    db.add(rep)
+    db.commit()
+    dc_id, rep_id = dc.id, rep.id
+    db.close()
+    r = client.put(f"/staff/clients/{dc_id}/service-type", json={"service_type": "done_for_you"}, headers=world["s"])
+    assert r.status_code == 200, r.text
+
+    # self-service client: box applies, agreement does not
+    assert client.get("/billing/policy/me", headers=world["c"]).json()["refund_final"] is True
+    assert client.get("/staff/agreement/current", headers=world["c"]).json()["required"] is False
+    # done-for-you client: no box, agreement does apply
+    assert client.get("/billing/policy/me", headers=dfy).json()["refund_final"] is False
+    assert client.get("/staff/agreement/current", headers=dfy).json()["required"] is True
+    r = client.post(f"/billing/checkout/{rep_id}", headers=dfy)
+    assert r.status_code == 400 and "agreement" in r.json()["detail"]
+    # staff cannot unlock the done-for-you report without the signed agreement either
+    r = client.post(f"/staff/reports/{rep_id}/mark-paid", headers=world["s"])
+    assert r.status_code == 400 and "agreement" in r.json()["detail"]
+    # a self-service client is not stopped by the agreement, only by the box
+    r = client.post(f"/billing/checkout/{world['ids']['fresh']}", headers=world["c"])
+    assert r.status_code == 400 and "box" in r.json()["detail"]
+    r = client.post(f"/billing/checkout/{world['ids']['fresh']}", json={"accept_refund_terms": True}, headers=world["c"])
+    assert r.status_code == 402
+
+
+def test_public_policy_flag_follows_the_switch_only(world):
+    settings.refund_final_after_unlock = True
+    assert client.get("/billing/policy").json()["refund_final"] is True
+    settings.refund_final_after_unlock = False
     assert client.get("/billing/policy").json()["refund_final"] is False
+    assert client.get("/billing/policy/me", headers=world["c"]).json()["refund_final"] is False
+
+
+def test_zelle_pay_info_only_for_signed_in_client_and_note_for_sister_company(world):
+    settings.zelle_contact = "pay@example.com"
+    settings.zelle_name = "MYESTYLEZ LLC"
+    old_slug = settings.platform_org_slug
+    settings.platform_org_slug = "pol-org"  # treat this test org as the main site
+    try:
+        pub = client.get("/billing/policy").json()
+        assert "pay" not in pub and "pay@example.com" not in str(pub)  # never public
+        assert pub["price_report"] == "49.99" and pub["price_bundle"] == "99.00"
+        me = client.get("/billing/policy/me", headers=world["c"]).json()["pay"]
+        assert me["contact"] == "pay@example.com" and me["memo"] == "c@pol.com"
+        assert "sister company of BlackBridge LLC" in me["note"] and "MYESTYLEZ LLC" in me["note"]
+        settings.zelle_name = "BlackBridge LLC"
+        assert client.get("/billing/policy/me", headers=world["c"]).json()["pay"]["note"] == ""
+        settings.zelle_contact = ""
+        assert client.get("/billing/policy/me", headers=world["c"]).json()["pay"] is None
+    finally:
+        settings.zelle_contact = settings.zelle_name = settings.zelle_note = ""
+        settings.platform_org_slug = old_slug
