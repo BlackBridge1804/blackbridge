@@ -85,7 +85,9 @@ def get_extra(db: Session, organization_id: str) -> Optional[OrgSettingsExtra]:
 
 def display_name_of(db: Session, org: models.Organization) -> str:
     row = get_row(db, org.id)
-    return (row.display_name if row and row.display_name else org.name)
+    if row and row.display_name:
+        return row.display_name
+    return settings.platform_display_name if is_platform_org(org) else org.name
 
 
 def refund_policy_for(db: Session, org: models.Organization) -> dict:
@@ -113,7 +115,7 @@ def brand_for(db: Session, org: Optional[models.Organization]) -> dict:
         return {"name": "BlackBridge", "logo": None, "color": None}
     row = get_row(db, org.id)
     return {
-        "name": (row.display_name if row and row.display_name else org.name),
+        "name": display_name_of(db, org),
         "logo": (row.logo_data if row and row.logo_data else None),
         "color": (row.primary_color if row and row.primary_color else None),
     }
