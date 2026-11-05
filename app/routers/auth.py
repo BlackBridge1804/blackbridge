@@ -40,17 +40,24 @@ def signup_client(payload: schemas.ClientSignup, db: Session = Depends(get_db)):
     return schemas.TokenOut(access_token=token)
 
 
+def _check_active(db: Session, principal) -> None:
+    from ..auth import _ensure_org_active
+    _ensure_org_active(principal, db)
+
+
 @router.post("/login", response_model=schemas.TokenOut)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     """Single login endpoint for both staff (User) and end consumers (Client),
     distinguished by which table the email is found in."""
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
     if user and verify_password(form_data.password, user.hashed_password):
+        _check_active(db, user)
         token = create_access_token(subject=user.id, subject_type="user", organization_id=user.organization_id)
         return schemas.TokenOut(access_token=token)
 
     client = db.query(models.Client).filter(models.Client.email == form_data.username).first()
     if client and verify_password(form_data.password, client.hashed_password):
+        _check_active(db, client)
         token = create_access_token(subject=client.id, subject_type="client", organization_id=client.organization_id)
         return schemas.TokenOut(access_token=token)
 

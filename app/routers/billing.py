@@ -36,6 +36,25 @@ def public_policy():
     return policy.public_policy()
 
 
+@router.get("/policy/me")
+def my_policy(db: Session = Depends(get_db), client: models.Client = Depends(require_client)):
+    """Same as /billing/policy, but "refund_final" is true only if the rule
+    covers THIS client (self-service clients, not done-for-you)."""
+    out = policy.public_policy()
+    out["refund_final"] = policy.refund_final_for(db, client.id)
+    from . import org_settings as _os
+    org = db.query(models.Organization).filter(models.Organization.id == client.organization_id).first()
+    out["pay"] = policy.pay_info(db, client)
+    out["accept_text"] = policy.accept_text_for(db, client)
+    out["brand"] = _os.brand_for(db, org)
+    out["brand"]["slug"] = org.slug if org else ""
+    out["brand"]["is_platform"] = _os.is_platform_org(org)
+    eff = _os.effective(db, org) if org else {}
+    out["price_report"] = eff.get("price_report") or out["price_report"]
+    out["price_bundle"] = eff.get("price_bundle") or out["price_bundle"]
+    return out
+
+
 @router.post("/checkout/{report_id}")
 def create_checkout(
     report_id: str,
@@ -55,7 +74,7 @@ def create_checkout(
 
     # When the "final after unlock" rule is on, the box must be ticked first and
     # the tick is saved with the date, time and IP address.
-    if policy.refund_final_active():
+    if policy.refund_final_for(db, client.id):
         if not (payload and payload.accept_refund_terms):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -63,15 +82,17 @@ def create_checkout(
             )
         fwd = request.headers.get("x-forwarded-for", "")
         ip = fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "")
-        policy.record_acceptance(db, report, ip)
+        policy.record_acceptance(db, report, ip, policy.accept_text_for(db, client))
 
     if not settings.stripe_secret_key and not settings.allow_dev_unlock:
         # No processor connected: payment is handled manually and the operator
         # unlocks the report with the "Mark as paid" button in the staff console.
         raise HTTPException(
             status.HTTP_402_PAYMENT_REQUIRED,
-            "Your full breakdown unlocks as soon as your payment is confirmed. "
-            "Please complete payment with your provider and they will unlock it for you.",
+            "Your request is recorded. Your full breakdown unlocks as soon as your payment is confirmed. "
+            + ("Please send your Zelle payment as shown above, with your sign-up email in the memo."
+               if policy.pay_info(db, client) else
+               "Please complete payment with your provider and they will unlock it for you."),
         )
 
     if not settings.stripe_secret_key:

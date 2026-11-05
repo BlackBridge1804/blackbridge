@@ -120,10 +120,14 @@ def provider_name_for(db: Session, organization_id: str) -> str:
 
 def address_for_org(db: Session, organization_id: str) -> str:
     """The principal business address printed in this organization's agreement.
-    Only the main site's organization has one for now."""
+    The main site uses BUSINESS_ADDRESS from Render; a licensee uses the address
+    saved in their own Business settings (blank until they save one)."""
     org = db.query(models.Organization).filter(models.Organization.id == organization_id).first()
     if org and org.slug == settings.platform_org_slug:
         return settings.business_address.strip()
+    if org:
+        from . import org_settings as _os
+        return _os.effective(db, org)["address"]
     return ""
 
 
@@ -182,7 +186,8 @@ def _view(a: Optional[ClientAgreement], configured: bool = True) -> dict:
 def ensure_unlock_allowed(db: Session, client_id: str, for_client: bool = False) -> None:
     """Raise if this client's report must not be unlocked yet. No-op while the
     agreement feature is switched off."""
-    if not settings.agreement_required:
+    from .. import policy
+    if not policy.agreement_applies(db, client_id):
         return
     a = latest_agreement(db, client_id)
     st = status_of(a)
@@ -259,11 +264,15 @@ class SignIn(BaseModel):
 router = APIRouter(prefix="/agreement", tags=["agreement"])
 
 
-def _require_ready(db: Session, organization_id: str) -> str:
+def _require_ready(db: Session, organization_id: str, client_id: Optional[str] = None) -> str:
     """Returns the business address to print, or raises if the agreement is off
     or this organization has no address set up yet."""
     if not settings.agreement_required:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "The agreement step is not turned on.")
+    if client_id is not None:
+        from .. import policy
+        if not policy.agreement_applies(db, client_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "The agreement step is not turned on for your account.")
     address = address_for_org(db, organization_id)
     if not address:
         raise HTTPException(
@@ -278,6 +287,8 @@ def get_current(db: Session = Depends(get_db), client: models.Client = Depends(r
     a = latest_agreement(db, client.id)
     address = address_for_org(db, client.organization_id)
     out = _view(a, configured=bool(address))
+    from .. import policy
+    out["required"] = policy.agreement_applies(db, client.id)
     if not out["required"] or not out["configured"]:
         return out
     if a is not None and out["status"] in ("signed", "cancelled"):
@@ -293,7 +304,7 @@ def get_current(db: Session = Depends(get_db), client: models.Client = Depends(r
 def acknowledge_disclosure(
     payload: NameIn, db: Session = Depends(get_db), client: models.Client = Depends(require_client)
 ):
-    address = _require_ready(db, client.organization_id)
+    address = _require_ready(db, client.organization_id, client.id)
     a = latest_agreement(db, client.id)
     st = status_of(a)
     if st in ("signed", "disclosure"):
@@ -322,7 +333,7 @@ def sign_agreement(
     db: Session = Depends(get_db),
     client: models.Client = Depends(require_client),
 ):
-    _require_ready(db, client.organization_id)
+    _require_ready(db, client.organization_id, client.id)
     if not payload.accept:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Please check the box to agree before signing.")
     a = latest_agreement(db, client.id)
@@ -344,7 +355,7 @@ def sign_agreement(
 
 @router.post("/cancel")
 def cancel_agreement(db: Session = Depends(get_db), client: models.Client = Depends(require_client)):
-    _require_ready(db, client.organization_id)
+    _require_ready(db, client.organization_id, client.id)
     a = latest_agreement(db, client.id)
     if status_of(a) != "signed":
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "There is no active agreement to cancel.")
