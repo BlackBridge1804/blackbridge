@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # their own organization name.
     platform_org_slug: str = "blackbridge-office-329"
     platform_legal_name: str = "BlackBridge LLC"
+    # The name clients SEE on the main site (the organization record can keep its
+    # internal name, for example "BlackBridgeOffice#329").
+    platform_display_name: str = "BlackBridge"
 
     # Free-preview expiry (see policy.py). 0 = off (the free summary never
     # expires). Set FREE_SCAN_DAYS=3 in Render to make the free summary
