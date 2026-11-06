@@ -139,5 +139,15 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)):
             if report:
                 report.is_paid = True
                 db.commit()
+                try:
+                    from .. import receipts as R, notices
+                    cents = session.get("amount_total")
+                    if isinstance(cents, int) and cents > 0:
+                        rc = R.issue(db, report.organization_id, report.client_id, "report", report.id,
+                                     "Credit report breakdown and letters", cents, "Card", session.get("id"))
+                        notices.payment_received(db, rc)
+                    notices.report_unlocked(db, report.client_id)
+                except Exception:
+                    pass  # a receipt or email problem must never fail the payment webhook
 
     return {"received": True}

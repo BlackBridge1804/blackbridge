@@ -416,6 +416,8 @@ def enroll(payload: EnrollIn, request: Request, db: Session = Depends(get_db), c
         db.flush()
     _activate(db, plan, request.client.host if request.client else None)
     db.commit()
+    from .. import notices
+    notices.builder_started(db, client.id)
     return _view(db, plan)
 
 
@@ -468,6 +470,8 @@ def _complete_checkin(db: Session, plan: BuilderPlan, day: int, payload: Checkin
     if day == max(BC.CHECKIN_DAYS):
         plan.status, plan.completed_at = "completed", now
     db.commit()
+    from .. import notices
+    notices.checkin_done(db, plan.client_id, day)
 
 
 @router.post("/me/checkins/{day}/complete")
@@ -645,6 +649,10 @@ def staff_paid(plan_id: str, milestone_id: str, payload: PaidIn, org_id: str = Q
     m.paid_method = (payload.method or "")[:40] or None
     m.paid_reference = (payload.reference or "")[:120] or None
     db.commit()
+    from .. import receipts as R, notices
+    rc = R.issue(db, plan.organization_id, plan.client_id, "builder", m.id, f"Credit Builder: {m.label}",
+                 m.amount_cents, m.paid_method, m.paid_reference, principal.id)
+    notices.payment_received(db, rc)
     return _view(db, plan, staff=True)
 
 
@@ -658,6 +666,8 @@ def staff_unpaid(plan_id: str, milestone_id: str, org_id: str = Query(default=No
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Payment step not found.")
     m.paid_at = m.paid_method = m.paid_reference = None
     db.commit()
+    from .. import receipts as R
+    R.void_for(db, "builder", m.id)
     return _view(db, plan, staff=True)
 
 

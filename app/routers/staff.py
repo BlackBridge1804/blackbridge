@@ -5,7 +5,10 @@ where every one of their clients' reports stands, without exposing letter
 text or full violation detail (that stays the client's own, behind the
 client login). This is read-only progress tracking, not a support inbox.
 """
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -99,9 +102,16 @@ def _get_report_for_staff(db: Session, report_id: str, principal: models.User) -
     return report
 
 
+class MarkPaidIn(BaseModel):
+    amount: Optional[str] = None      # what was actually received, e.g. "49.99"; defaults to the report price
+    method: Optional[str] = None      # Zelle, cash, ...
+    reference: Optional[str] = None
+
+
 @router.post("/reports/{report_id}/mark-paid")
 def mark_report_paid(
     report_id: str,
+    payload: Optional[MarkPaidIn] = None,
     db: Session = Depends(get_db),
     principal: models.User = Depends(require_org_staff),
 ):
@@ -114,9 +124,23 @@ def mark_report_paid(
     ensure_unlock_allowed(db, report.client_id)
     from .. import policy  # no-op unless the "final after unlock" rule is switched on
     policy.require_acceptance_for_staff(db, report)
+    payload = payload or MarkPaidIn()
+    from .. import receipts as R, notices
+    from . import org_settings as _os
+    org = db.query(models.Organization).filter(models.Organization.id == report.organization_id).first()
+    amount_text = payload.amount if (payload.amount or "").strip() else _os.effective(db, org)["price_report"]
+    cents = R.to_cents(amount_text)
+    if cents is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Type the amount received as a number, for example 49.99.")
+    was_paid = bool(report.is_paid)
     report.is_paid = True
     db.commit()
-    return {"report_id": report.id, "is_paid": True}
+    receipt = R.issue(db, report.organization_id, report.client_id, "report", report.id,
+                      "Credit report breakdown and letters", cents, payload.method, payload.reference, principal.id)
+    if not was_paid:
+        notices.payment_received(db, receipt)
+        notices.report_unlocked(db, report.client_id)
+    return {"report_id": report.id, "is_paid": True, "receipt_id": receipt.id, "receipt_number": receipt.number}
 
 
 @router.post("/reports/{report_id}/mark-unpaid")
@@ -129,6 +153,8 @@ def mark_report_unpaid(
     report = _get_report_for_staff(db, report_id, principal)
     report.is_paid = False
     db.commit()
+    from .. import receipts as R
+    R.void_for(db, "report", report.id)
     return {"report_id": report.id, "is_paid": False}
 
 
