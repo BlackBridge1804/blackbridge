@@ -20,7 +20,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, ForeignKey, String, func
+from sqlalchemy import Column, DateTime, String, func
 from sqlalchemy.orm import Session
 
 from .. import mailer, models
@@ -46,7 +46,7 @@ class PasswordReset(Base):
     id = Column(String, primary_key=True, default=_uuid)
     account_type = Column(String, nullable=False)  # "client" | "user"
     account_id = Column(String, nullable=False, index=True)
-    organization_id = Column(String, ForeignKey("organizations.id"), nullable=True, index=True)
+    organization_id = Column(String, nullable=True, index=True)  # no foreign key on purpose: see receipts.py
     kind = Column(String, nullable=False)  # "request" (waiting for staff) | "link"
     token_hash = Column(String, nullable=True, index=True)
     issued_by = Column(String, nullable=True)  # "self", "email" or a staff user id
