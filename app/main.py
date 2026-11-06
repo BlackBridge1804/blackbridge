@@ -11,7 +11,7 @@ from .config import settings
 from .database import Base, SessionLocal, engine
 from .models import PartnerOffer, User, UserRole
 from .routers import analytics, assistant, auth, billing, letters, offers, organizations, recommendations, reports, staff
-from .routers import account, authorizations, builder, licensing, org_settings
+from .routers import account, authorizations, builder, licensing, org_settings, password_reset, receipts
 
 Base.metadata.create_all(bind=engine)
 
@@ -54,6 +54,8 @@ app.include_router(licensing.router)
 app.include_router(org_settings.router)
 app.include_router(account.router)
 app.include_router(builder.router)
+app.include_router(password_reset.router)
+app.include_router(receipts.router)
 
 _STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 

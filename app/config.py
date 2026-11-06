@@ -93,6 +93,19 @@ class Settings(BaseSettings):
     price_builder_coaching: str = "500.00"
     builder_start_funds: str = "1000"  # shown to clients as what to set aside; paid by THEM straight to lenders, never held by us
 
+    # Email (OFF until you set MAIL_PROVIDER, MAIL_API_KEY and MAIL_FROM in Render).
+    # Uses a provider's web API (not SMTP), so it also works on Render's free plan.
+    #   MAIL_PROVIDER   "resend" or "brevo"
+    #   MAIL_API_KEY    the provider's API key (keep it secret; never put it in chat)
+    #   MAIL_FROM       the sender address the provider has verified for you
+    #   MAIL_FROM_NAME  (optional) the sender name shown to clients
+    #   PUBLIC_BASE_URL the site address used in links inside emails
+    mail_provider: str = ""
+    mail_api_key: str = ""
+    mail_from: str = ""
+    mail_from_name: str = "BlackBridge"
+    public_base_url: str = "https://blackbridge-credit-repair.onrender.com"
+
     platform_admin_email: str = "you@example.com"
     platform_admin_password: str = "change-me"
 
