@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import Session
 
 from . import models
@@ -25,8 +25,12 @@ class Receipt(Base):
     __tablename__ = "receipts"
 
     id = Column(String, primary_key=True, default=_uuid)
-    organization_id = Column(String, ForeignKey("organizations.id"), nullable=False, index=True)
-    client_id = Column(String, ForeignKey("clients.id"), nullable=False, index=True)
+    # No foreign keys on purpose. Creating a table with foreign keys needs a lock on
+    # organizations/clients, and if any open transaction holds one (for example the
+    # previous instance during a deploy) startup would wait forever and Render would
+    # time the deploy out. The app checks ownership itself on every read and write.
+    organization_id = Column(String, nullable=False, index=True)
+    client_id = Column(String, nullable=False, index=True)
     number = Column(String, nullable=False)
     kind = Column(String, nullable=False)  # "report" | "builder"
     source_id = Column(String, nullable=True, index=True)  # report id or builder milestone id
