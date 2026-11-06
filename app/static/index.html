@@ -360,6 +360,7 @@ function setBusy(b){ state.busy = b; render(); }
 function logout(){
   licState.loaded = false; licState.loading = false; licState.settings = null; licState.apps = null; licState.team = null; licState.summary = null; licState.orgs = null; licState.mine = null;
   licState.draft = null; licState.logoDraft = undefined; licState.created = null; licState.msg = null;
+  rcp.list = undefined; pwr.staff = undefined; pwr.link = null; pwr.mode = null;
   bld.me = undefined; bld.ov = undefined; bld.settings = undefined; bld.cl = null; bld.clLoading = null; bld.msg = null; bld.err = null; bld.accept = false;
   saveToken(null);
   state.view = "auth";
@@ -1159,7 +1160,7 @@ function render(){
   }
 
   if (state.view === "auth"){
-    html += renderAuthView();
+    html += pwr.mode ? renderPwrView() : renderAuthView();
   } else if (state.view === "client"){
     html += state.activeReportId ? renderReportDetailView() : renderClientDashboard();
   } else if (state.view === "admin"){
@@ -1178,6 +1179,8 @@ function render(){
   bindEvents();
   licAfterRender(app);
   bldAfterRender(app);
+  pwrAfterRender(app);
+  rcpAfterRender();
 
   if (chatOpen){
     var chatBody = document.getElementById("chatBody");
@@ -1237,6 +1240,7 @@ function renderLoginForm(){
     '<div class="field"><label>Email</label><input type="email" id="li_email" required></div>' +
     '<div class="field"><label>Password</label><input type="password" id="li_password" required></div>' +
     '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Log in") + '</button>' +
+    '<p class="muted" style="margin:2px 0 0;"><button type="button" class="link" data-pwr-forgot="1" style="padding:0;">Forgot your password?</button></p>' +
   '</form>';
 }
 
@@ -1247,6 +1251,7 @@ function renderStaffLoginForm(){
     '<div class="field"><label>Email</label><input type="email" id="admin_email" required></div>' +
     '<div class="field"><label>Password</label><input type="password" id="admin_password" required></div>' +
     '<button type="submit" class="secondary block"' + (state.busy ? " disabled" : "") + '>Log in as staff</button>' +
+    '<p class="muted" style="margin:2px 0 0;"><button type="button" class="link" data-pwr-forgot="1" style="padding:0;">Forgot your password?</button></p>' +
   '</form>';
 }
 
@@ -1288,6 +1293,7 @@ function renderClientDashboard(){
     list +
   '</div>' +
   renderBuilderCard() +
+  renderReceiptsCard() +
   '<div class="card">' +
     '<h3 style="margin-bottom:6px;">No credit file yet?</h3>' +
     '<p>You don’t need a report to get started -- see the general path most people use to open their first account and start building history.</p>' +
@@ -2110,7 +2116,7 @@ function renderPartnerOffersAdminCard(){
 }
 
 function renderAdminView(){
-  var html = renderMyLicenseCard() + renderChecklistCard() + renderBusinessSettingsCard() + renderTeamCard() + renderLicensingCard() + renderBuilderWorklistCard() + renderStaffClientsCard() + renderBuilderSettingsCard();
+  var html = renderMyLicenseCard() + renderChecklistCard() + renderBusinessSettingsCard() + renderTeamCard() + renderLicensingCard() + renderBuilderWorklistCard() + renderStaffClientsCard() + renderPasswordHelpCard() + renderBuilderSettingsCard();
 
   var platformOnly = '';
   platformOnly += '<div class="card"><h2>Create a licensee organization</h2>' +
@@ -2943,6 +2949,11 @@ function licAfterRender(app){
 }
 
 function boot(){
+  if (qs("reset")){
+    // A reset link was opened: start from a logged-out screen so the right password gets changed.
+    try { localStorage.removeItem("crp_token"); } catch (e) {}
+    pwr.mode = "reset"; pwr.token = qs("reset");
+  }
   loadToken();
   if (state.token && state.tokenPayload){
     if (state.tokenPayload.type === "user"){
@@ -2969,6 +2980,139 @@ function boot(){
   if (brandSlug){
     api("/org-settings/public/" + encodeURIComponent(brandSlug)).then(applyBrand).catch(function(){});
   }
+}
+
+/* ---------- Receipts (client) ---------- */
+var rcp = { list: undefined, loading: false };
+function renderReceiptsCard(){
+  if (!rcp.list || !rcp.list.length) return "";
+  return '<div class="card"><h2>Your receipts</h2>' + rcp.list.map(function(r){
+    return '<div class="report-item"><div><div><strong>' + esc(r.number) + '</strong> · ' + esc(r.amount_text) + (r.void ? ' <span class="badge unpaid">voided</span>' : '') + '</div>' +
+      '<div class="meta">' + esc(r.description) + ' · ' + esc(fmtD(r.paid_at)) + '</div></div>' +
+      '<a href="/static/receipt.html?id=' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener">View / print</a></div>';
+  }).join("") + '</div>';
+}
+function rcpAfterRender(){
+  if (state.view === "client" && rcp.list === undefined && !rcp.loading){
+    rcp.loading = true;
+    api("/receipts/me").then(function(j){ rcp.list = j.receipts; }).catch(function(){ rcp.list = []; })
+      .then(function(){ rcp.loading = false; render(); });
+  }
+}
+
+/* ---------- Forgot password ---------- */
+var pwr = { mode: null, emailEnabled: null, err: null, email: "", token: "", staff: undefined, loadingStaff: false, link: null, staffErr: null };
+
+function pwrOpenForgot(){
+  pwr.mode = "forgot"; pwr.err = null;
+  if (pwr.emailEnabled === null){
+    api("/password-reset/info").then(function(j){ pwr.emailEnabled = !!j.email_enabled; }).catch(function(){ pwr.emailEnabled = false; }).then(function(){ render(); });
+  }
+  render();
+}
+
+function renderPwrView(){
+  var c = '';
+  if (pwr.mode === "forgot"){
+    c = '<h2>Forgot your password?</h2>' +
+      '<p>' + (pwr.emailEnabled ? 'Enter the email you signed up with and we will email you a link to choose a new password.'
+        : 'Enter the email you signed up with. We will let our team know, and they will send you a link to choose a new password.') + '</p>' +
+      (pwr.err ? '<div class="banner error">' + esc(pwr.err) + '</div>' : '') +
+      '<form id="pwrForgotForm" class="stack"><div class="field"><label>Email</label><input type="email" id="pwr_email" required value="' + esc(pwr.email) + '"></div>' +
+      '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : (pwr.emailEnabled ? "Email me a link" : "Ask for a reset link")) + '</button></form>' +
+      '<p style="margin:12px 0 0;"><button type="button" class="link" data-pwr-back="1" style="padding:0;">Back to log in</button></p>';
+  } else if (pwr.mode === "sent"){
+    c = '<h2>Check back soon</h2>' +
+      '<p>' + (pwr.emailEnabled ? 'If we find an account for that email, a link is on its way. It works once and expires in 1 hour. Check your spam folder too.'
+        : 'Thank you. If we find an account for that email, our team has been told and will send you a reset link. You can also call or email us directly.') + '</p>' +
+      '<button type="button" class="secondary block" data-pwr-back="1">Back to log in</button>';
+  } else if (pwr.mode === "reset"){
+    c = '<h2>Choose a new password</h2>' +
+      '<p>Pick a password you have not used before. At least 8 characters.</p>' +
+      (pwr.err ? '<div class="banner error">' + esc(pwr.err) + '</div>' : '') +
+      '<form id="pwrResetForm" class="stack">' +
+      '<div class="field"><label>New password</label><input type="password" id="pwr_new" required minlength="8" autocomplete="new-password"></div>' +
+      '<div class="field"><label>Type it again</label><input type="password" id="pwr_new2" required minlength="8" autocomplete="new-password"></div>' +
+      '<button type="submit" class="block"' + (state.busy ? " disabled" : "") + '>' + (state.busy ? spinnerHtml() : "Save new password") + '</button></form>';
+  } else if (pwr.mode === "done"){
+    c = '<h2>Your password is updated</h2><p>You can log in with your new password now.</p>' +
+      '<button type="button" class="block" data-pwr-back="1">Go to log in</button>';
+  }
+  return '<div class="card">' + c + '</div>';
+}
+
+function pwrBack(){ pwr.mode = null; pwr.err = null; authTab = "login"; clearBanner(); render(); }
+
+function renderPasswordHelpCard(){
+  if (pwr.staff === undefined || pwr.staff === null) return "";
+  var h = '<div class="card"><h2>Password help</h2>' +
+    '<p>When someone forgets their password, you can make them a one-time reset link' + (pwr.staff.email_enabled ? ' (we also email it to them)' : ' and send it to them by text or phone') + '. It works once and expires in 24 hours.</p>';
+  if (pwr.staffErr) h += '<div class="banner error">' + esc(pwr.staffErr) + '</div>';
+  if (pwr.link){
+    h += '<div class="banner ok" style="word-break:break-word;"><strong>Link for ' + esc(pwr.link.email) + '</strong>' + (pwr.link.emailed ? ' (also emailed to them)' : '') +
+      '<br><input type="text" readonly id="pwr_link_box" value="' + esc(pwr.link.url) + '" style="width:100%;margin-top:6px;"><br>' +
+      '<span class="muted">Tap the box, copy it, and send it to them. Do not post it anywhere public.</span></div>';
+  }
+  var reqs = pwr.staff.requests || [];
+  if (reqs.length){
+    h += '<h3 style="margin:10px 0 4px;">Waiting for a link</h3>' + reqs.map(function(r){
+      return '<div class="report-item"><div><div><strong>' + esc(r.name || r.email) + '</strong></div><div class="meta">' + esc(r.email) + ' · asked ' + esc(fmtD(r.requested_at)) + '</div></div>' +
+        '<button type="button" class="secondary" data-pwr-link="' + esc(r.email) + '">Create link</button></div>';
+    }).join("");
+  } else {
+    h += '<div class="empty">No one is waiting for a reset link.</div>';
+  }
+  h += '<h3 style="margin:14px 0 4px;">Reset by email address</h3>' +
+    '<div class="grid-2"><div class="field"><label>Their email</label><input type="email" id="pwr_staff_email"></div></div>' +
+    '<button type="button" class="secondary block" id="pwr_staff_btn">Create reset link</button></div>';
+  return h;
+}
+
+function pwrLoadStaff(){
+  if (pwr.loadingStaff) return; pwr.loadingStaff = true;
+  api("/password-reset/staff/requests").then(function(j){ pwr.staff = j; pwr.staffErr = null; })
+    .catch(function(){ pwr.staff = null; }).then(function(){ pwr.loadingStaff = false; render(); });
+}
+
+function pwrMakeLink(email){
+  if (!email){ pwr.staffErr = "Type the person's email first."; render(); return; }
+  licPost("/password-reset/staff/link", { email: email }).then(function(j){
+    pwr.link = j; pwr.staffErr = null; pwr.staff = undefined; pwr.loadingStaff = false; render();
+  }).catch(function(e){ pwr.staffErr = e.message; render(); });
+}
+
+function pwrAfterRender(app){
+  var $ = function(id){ return document.getElementById(id); };
+  if (state.view === "admin" && pwr.staff === undefined && !pwr.loadingStaff){ pwrLoadStaff(); return; }
+  app.querySelectorAll("[data-pwr-forgot]").forEach(function(b){ b.addEventListener("click", pwrOpenForgot); });
+  app.querySelectorAll("[data-pwr-back]").forEach(function(b){ b.addEventListener("click", pwrBack); });
+  var f = $("pwrForgotForm");
+  if (f) f.addEventListener("submit", function(e){
+    e.preventDefault(); pwr.email = $("pwr_email").value.trim(); pwr.err = null; state.busy = true; render();
+    api("/password-reset/request", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: pwr.email, org: qs("org") || DEFAULT_ORG_SLUG || null }) })
+      .then(function(j){ pwr.emailEnabled = !!j.email_enabled; pwr.mode = "sent"; })
+      .catch(function(err){ pwr.err = err.message; })
+      .then(function(){ state.busy = false; render(); });
+  });
+  var rf = $("pwrResetForm");
+  if (rf) rf.addEventListener("submit", function(e){
+    e.preventDefault();
+    var a = $("pwr_new").value, b = $("pwr_new2").value;
+    if (a !== b){ pwr.err = "The two passwords do not match."; render(); return; }
+    pwr.err = null; state.busy = true; render();
+    api("/password-reset/confirm", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: pwr.token, new_password: a }) })
+      .then(function(){
+        pwr.mode = "done"; pwr.token = "";
+        try { history.replaceState(null, "", location.pathname + (qs("org") ? "?org=" + encodeURIComponent(qs("org")) : "")); } catch (x) {}
+      })
+      .catch(function(err){ pwr.err = err.message; })
+      .then(function(){ state.busy = false; render(); });
+  });
+  app.querySelectorAll("[data-pwr-link]").forEach(function(b){ b.addEventListener("click", function(){ pwrMakeLink(b.getAttribute("data-pwr-link")); }); });
+  var sb = $("pwr_staff_btn"); if (sb) sb.addEventListener("click", function(){ pwrMakeLink($("pwr_staff_email").value.trim()); });
+  var box = $("pwr_link_box"); if (box) box.addEventListener("focus", function(){ box.select(); });
 }
 
 /* ---------- Credit Builder add-on ---------- */

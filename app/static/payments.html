@@ -58,7 +58,7 @@
 
 <script>
 (function(){
-  var token = null, orgId = null, clients = [], openId = null, reports = {}, profiles = {}, agr = { required: false, map: {} };
+  var token = null, orgId = null, clients = [], openId = null, reports = {}, profiles = {}, rcpts = {}, payFormFor = null, agr = { required: false, map: {} };
   var $ = function(id){ return document.getElementById(id); };
 
   function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
@@ -158,8 +158,13 @@
             '<span class="badge ' + (r.is_paid ? "paid" : "unpaid") + '">' + (r.is_paid ? "Paid / Unlocked" : "Not paid") + '</span></div>' +
             '<div style="margin-top:10px">' +
             (r.is_paid
-              ? '<button class="undo" data-paid="0" data-rid="' + esc(r.report_id) + '">Undo: mark as unpaid</button>'
-              : '<button data-paid="1" data-rid="' + esc(r.report_id) + '">Mark as paid</button>') +
+              ? receiptLink(c.id, r.report_id) + '<button class="undo" data-paid="0" data-rid="' + esc(r.report_id) + '">Undo: mark as unpaid</button>'
+              : (payFormFor === r.report_id
+                  ? '<div class="rep" style="margin-top:0"><label>Amount you received ($)</label><input type="text" inputmode="decimal" id="pf_amount" placeholder="Leave blank for the standard price">' +
+                    '<label>How they paid</label><select id="pf_method"><option>Zelle</option><option>Cash</option><option>Cash App</option><option>PayPal</option><option>Check</option><option>Other</option></select>' +
+                    '<label>Reference (optional)</label><input type="text" id="pf_ref" placeholder="Zelle confirmation, check number...">' +
+                    '<div style="margin-top:12px" class="row"><button data-paid="1" data-confirm="1" data-rid="' + esc(r.report_id) + '">Confirm payment received</button><button class="ghost" data-payform-cancel="1">Cancel</button></div></div>'
+                  : '<button data-payform="' + esc(r.report_id) + '">Mark as paid</button>')) +
             '</div></div>';
         });
       }
@@ -168,7 +173,13 @@
     $("clientsCard").innerHTML = h;
   }
 
+  function receiptLink(cid, rid){
+    var list = rcpts[cid] || [], m = list.filter(function(x){ return x.source_id === rid && !x.void; })[0];
+    return m ? '<a href="/static/receipt.html?id=' + encodeURIComponent(m.id) + '" target="_blank" rel="noopener" style="margin-right:12px;font-size:14px">Receipt ' + esc(m.number) + ' (' + esc(m.amount_text) + ')</a>' : "";
+  }
+
   function loadReports(cid){
+    api("/receipts/client/" + encodeURIComponent(cid)).then(function(j){ rcpts[cid] = j.receipts; renderClients(); }).catch(function(){});
     api("/staff/clients/" + encodeURIComponent(cid) + "/profile").then(function(p){ profiles[cid] = p; renderClients(); }).catch(function(){});
     return api("/staff/clients/" + encodeURIComponent(cid) + "/reports").then(function(rs){ reports[cid] = rs; renderClients(); })
       .catch(function(e){ say("err", e.message); });
@@ -181,11 +192,20 @@
       openId = (openId === cid) ? null : cid;
       renderClients();
       if (openId) loadReports(openId);
+    } else if (t.getAttribute("data-payform")){
+      payFormFor = t.getAttribute("data-payform"); say("", ""); renderClients();
+    } else if (t.getAttribute("data-payform-cancel")){
+      payFormFor = null; renderClients();
     } else if (t.getAttribute("data-rid")){
       var paid = t.getAttribute("data-paid") === "1";
       t.disabled = true; say("", "");
-      api("/staff/reports/" + encodeURIComponent(t.getAttribute("data-rid")) + (paid ? "/mark-paid" : "/mark-unpaid"), { method: "POST" })
-        .then(function(){ say("ok", paid ? "Marked as paid. The client can now see the full breakdown." : "Marked as unpaid."); return loadReports(openId); })
+      var opts = { method: "POST" };
+      if (paid && t.getAttribute("data-confirm")){
+        opts.headers = { "Content-Type": "application/json" };
+        opts.body = JSON.stringify({ amount: $("pf_amount").value.trim() || null, method: $("pf_method").value, reference: $("pf_ref").value.trim() || null });
+      }
+      api("/staff/reports/" + encodeURIComponent(t.getAttribute("data-rid")) + (paid ? "/mark-paid" : "/mark-unpaid"), opts)
+        .then(function(j){ payFormFor = null; say("ok", paid ? "Marked as paid and receipt " + (j && j.receipt_number ? j.receipt_number : "") + " created. The client can now see the full breakdown." : "Marked as unpaid. The receipt was voided."); return loadReports(openId); })
         .catch(function(e){ say("err", e.message); t.disabled = false; });
     }
   });

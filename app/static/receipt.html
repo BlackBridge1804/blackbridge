@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Receipt</title>
+<style>
+  body{margin:0;background:#f3f4f7;color:#1a1f2b;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;}
+  .wrap{max-width:640px;margin:0 auto;padding:24px 16px 60px;}
+  .sheet{position:relative;background:#fff;border:1px solid #dfe3ec;border-radius:12px;padding:28px;overflow:hidden;}
+  h1{font-size:22px;margin:0 0 2px} .muted{color:#5b6272;font-size:14px}
+  table{width:100%;border-collapse:collapse;margin-top:18px} td{padding:9px 0;border-bottom:1px solid #eceff5;font-size:15px;vertical-align:top} td:first-child{color:#5b6272;width:38%}
+  .total{font-size:26px;font-weight:700;margin-top:18px}
+  .void{position:absolute;top:36%;left:50%;transform:translate(-50%,-50%) rotate(-18deg);font-size:72px;font-weight:800;color:rgba(194,59,59,.25);border:6px solid rgba(194,59,59,.25);padding:0 22px;border-radius:12px;pointer-events:none}
+  .bar{display:flex;gap:10px;margin-bottom:14px}
+  button,a.btn{font-size:15px;font-weight:700;border:0;border-radius:10px;padding:11px 16px;cursor:pointer;background:#2f6fed;color:#fff;text-decoration:none;display:inline-block}
+  a.btn.ghost{background:transparent;color:#2f6fed;border:1px solid #dfe3ec}
+  .note{margin-top:20px;font-size:12px;color:#5b6272;line-height:1.5}
+  @media print{body{background:#fff}.bar{display:none}.sheet{border:0;padding:0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="bar"><button id="printBtn" style="display:none">Print or save as PDF</button><a class="btn ghost" href="/">Back to my account</a></div>
+  <div class="sheet" id="sheet"><p class="muted">Loading…</p></div>
+</div>
+<script>
+(function(){
+  function esc(s){ return String(s == null ? "" : s).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+  var sheet = document.getElementById("sheet");
+  var id = new URLSearchParams(location.search).get("id"), token = null;
+  try { token = localStorage.getItem("crp_token"); } catch (e) {}
+  if (!id){ sheet.innerHTML = "<p>No receipt selected.</p>"; return; }
+  if (!token){ sheet.innerHTML = '<p>Please <a href="/">log in</a> first, then open your receipt again.</p>'; return; }
+  fetch("/receipts/" + encodeURIComponent(id), { headers: { Authorization: "Bearer " + token } }).then(function(r){
+    return r.json().then(function(b){ if (!r.ok) throw new Error(r.status === 401 ? "Please log in again, then open your receipt." : "This receipt was not found."); return b; });
+  }).then(function(r){
+    var b = r.business || {}, d = r.paid_at ? new Date(r.paid_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" }) : "";
+    document.title = "Receipt " + r.number;
+    sheet.innerHTML = (r.void ? '<div class="void">VOID</div>' : "") +
+      '<h1>' + esc(b.name) + '</h1><div class="muted">' + esc(b.address) + (b.phone ? " · " + esc(b.phone) : "") + (b.email ? " · " + esc(b.email) : "") + '</div>' +
+      '<h2 style="margin:22px 0 0;font-size:18px">Receipt ' + esc(r.number) + '</h2>' +
+      '<table><tr><td>Date received</td><td>' + esc(d) + '</td></tr><tr><td>Received from</td><td>' + esc(r.client_name) + '<br><span class="muted">' + esc(r.client_email) + '</span></td></tr>' +
+      '<tr><td>For</td><td>' + esc(r.description) + '</td></tr>' +
+      (r.method ? '<tr><td>Paid by</td><td>' + esc(r.method) + '</td></tr>' : '') +
+      (r.reference ? '<tr><td>Reference</td><td>' + esc(r.reference) + '</td></tr>' : '') + '</table>' +
+      '<div class="total">' + esc(r.amount_text) + (r.void ? ' <span class="muted" style="font-size:15px">(voided: this payment was reversed)</span>' : '') + '</div>' +
+      '<p class="note">This receipt shows the payment recorded by ' + esc(b.name) + '. Results of any service are not guaranteed. You may cancel a service agreement within 3 business days of signing it.</p>';
+    document.getElementById("printBtn").style.display = "inline-block";
+    document.getElementById("printBtn").onclick = function(){ window.print(); };
+  }).catch(function(e){ sheet.innerHTML = "<p>" + esc(e.message) + "</p>"; });
+})();
+</script>
+</body>
+</html>
